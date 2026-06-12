@@ -1,6 +1,6 @@
 use savemyterminal::protocol::{
     Event, EventKind, FailureCategory, Metric, MetricQuality, MetricSource, PROTOCOL_VERSION,
-    ToolCategory,
+    SessionSnapshot, SessionState, ToolCategory,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -99,4 +99,100 @@ fn protocol_enums_reject_unknown_variants() {
     assert!(serde_json::from_str::<MetricSource>(r#""unknown""#).is_err());
     assert!(serde_json::from_str::<ToolCategory>(r#""unknown""#).is_err());
     assert!(serde_json::from_str::<FailureCategory>(r#""mystery""#).is_err());
+}
+
+#[test]
+fn rejects_unknown_top_level_event_fields() {
+    let event = Event::new(Uuid::new_v4(), "generic", "unknown", EventKind::Started);
+    let mut value = serde_json::to_value(event).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .insert("prompt".to_owned(), Value::String("secret".to_owned()));
+
+    assert!(serde_json::from_value::<Event>(value).is_err());
+}
+
+#[test]
+fn rejects_unknown_event_kind_fields() {
+    let event = Event::new(
+        Uuid::new_v4(),
+        "generic",
+        "unknown",
+        EventKind::ToolRunning {
+            category: ToolCategory::Shell,
+        },
+    );
+    let mut value = serde_json::to_value(event).unwrap();
+    value["kind"]
+        .as_object_mut()
+        .unwrap()
+        .insert("output".to_owned(), Value::String("secret".to_owned()));
+
+    assert!(serde_json::from_value::<Event>(value).is_err());
+}
+
+#[test]
+fn rejects_unknown_metric_fields() {
+    let event = Event::new(
+        Uuid::new_v4(),
+        "generic",
+        "unknown",
+        EventKind::Metrics {
+            cpu_percent: Some(Metric::new(12.5, MetricQuality::Exact, MetricSource::Os)),
+            memory_bytes: None,
+        },
+    );
+    let mut value = serde_json::to_value(event).unwrap();
+    value["kind"]["cpu_percent"]
+        .as_object_mut()
+        .unwrap()
+        .insert("command".to_owned(), Value::String("secret".to_owned()));
+
+    assert!(serde_json::from_value::<Event>(value).is_err());
+}
+
+#[test]
+fn rejects_unknown_session_snapshot_fields() {
+    let snapshot = SessionSnapshot {
+        session_id: Uuid::new_v4(),
+        adapter_id: "generic".to_owned(),
+        agent_id: "unknown".to_owned(),
+        state: SessionState::Starting,
+        started_at_ms: 1,
+        updated_at_ms: 1,
+        cpu_percent: None,
+        memory_bytes: None,
+    };
+    let mut value = serde_json::to_value(snapshot).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .insert("environment".to_owned(), Value::String("secret".to_owned()));
+
+    assert!(serde_json::from_value::<SessionSnapshot>(value).is_err());
+}
+
+#[test]
+fn rejects_non_finite_cpu_percent_metrics() {
+    for cpu_percent in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let event = Event::new(
+            Uuid::new_v4(),
+            "generic",
+            "unknown",
+            EventKind::Metrics {
+                cpu_percent: Some(Metric::new(
+                    cpu_percent,
+                    MetricQuality::Exact,
+                    MetricSource::Os,
+                )),
+                memory_bytes: None,
+            },
+        );
+
+        assert_eq!(
+            event.validate().unwrap_err().to_string(),
+            "cpu percent metric must be finite"
+        );
+    }
 }

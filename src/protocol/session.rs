@@ -21,6 +21,7 @@ impl SessionState {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SessionSnapshot {
     pub session_id: Uuid,
     pub adapter_id: String,

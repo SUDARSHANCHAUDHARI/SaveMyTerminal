@@ -42,6 +42,7 @@ pub enum FailureCategory {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Metric<T> {
     pub value: T,
     pub quality: MetricQuality,
@@ -59,7 +60,7 @@ impl<T> Metric<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventKind {
     Started,
     Thinking,
@@ -84,6 +85,7 @@ pub enum EventKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Event {
     pub protocol_version: u16,
     pub event_id: Uuid,
@@ -103,8 +105,8 @@ impl Event {
     ) -> Self {
         let timestamp_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+            .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
+            .unwrap_or(0);
         Self {
             protocol_version: PROTOCOL_VERSION,
             event_id: Uuid::new_v4(),
@@ -126,6 +128,14 @@ impl Event {
         if self.adapter_id.len() > 64 || self.agent_id.len() > 64 {
             return Err(ProtocolError::IdentifierTooLong);
         }
+        if let EventKind::Metrics {
+            cpu_percent: Some(cpu_percent),
+            ..
+        } = &self.kind
+            && !cpu_percent.value.is_finite()
+        {
+            return Err(ProtocolError::NonFiniteCpuPercent);
+        }
         Ok(())
     }
 }
@@ -138,4 +148,6 @@ pub enum ProtocolError {
     EmptyIdentifier,
     #[error("adapter and agent identifiers must not exceed 64 bytes")]
     IdentifierTooLong,
+    #[error("cpu percent metric must be finite")]
+    NonFiniteCpuPercent,
 }
