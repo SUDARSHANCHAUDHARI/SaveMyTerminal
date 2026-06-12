@@ -1,2 +1,5 @@
 /.worktrees/
 /.superpowers/
+/target/
+/.smt-runtime/
+*.log
