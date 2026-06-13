@@ -1,8 +1,15 @@
 use savemyterminal::{
-    integration::managed::{BlockState, Marker, insert_or_replace, inspect, remove},
+    integration::{
+        PlanAction, TextDescriptor, Validator, apply_plan,
+        managed::{BlockState, Marker, insert_or_replace, inspect, remove},
+        plan_install,
+    },
     manifest::{IntegrationManifest, IntegrationRecord, load_manifest, save_manifest_atomic},
 };
-use std::path::PathBuf;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 fn marker() -> Marker {
     Marker::new("example", "#").unwrap()
@@ -117,4 +124,130 @@ fn manifest_rejects_unknown_fields_duplicate_ids_and_newer_versions() {
         ],
     };
     assert!(save_manifest_atomic(&path, &duplicate).is_err());
+}
+
+struct ContentValidator {
+    required: &'static str,
+}
+
+impl Validator for ContentValidator {
+    fn validate(&self, target: &Path) -> Result<(), String> {
+        let content = std::fs::read_to_string(target).map_err(|error| error.to_string())?;
+        content
+            .contains(self.required)
+            .then_some(())
+            .ok_or_else(|| format!("missing {}", self.required))
+    }
+}
+
+fn descriptor(
+    target: PathBuf,
+    body: &str,
+    validator: Option<Arc<dyn Validator>>,
+) -> TextDescriptor {
+    TextDescriptor::new("example", 1, target, "#", body, validator).unwrap()
+}
+
+#[test]
+fn planning_is_read_only_and_bounds_the_preview() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("tool.conf");
+    let original = format!("{}\n", "user-line".repeat(400));
+    std::fs::write(&target, &original).unwrap();
+
+    let plan = plan_install(&descriptor(target.clone(), "managed line", None)).unwrap();
+
+    assert_eq!(plan.action, PlanAction::Update);
+    assert_eq!(std::fs::read_to_string(target).unwrap(), original);
+    assert!(plan.preview.len() <= 4096);
+    assert!(plan.preview.contains("SaveMyTerminal:example"));
+}
+
+#[test]
+fn successful_apply_creates_backup_and_manifest_record() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("tool.conf");
+    let manifest_path = temp.path().join("integrations.json");
+    let backup_dir = temp.path().join("backups");
+    std::fs::write(&target, "user-content\n").unwrap();
+    let descriptor = descriptor(
+        target.clone(),
+        "managed line",
+        Some(Arc::new(ContentValidator {
+            required: "managed line",
+        })),
+    );
+    let plan = plan_install(&descriptor).unwrap();
+
+    let record = apply_plan(&plan, &descriptor, &manifest_path, &backup_dir).unwrap();
+
+    assert!(
+        std::fs::read_to_string(&target)
+            .unwrap()
+            .contains("managed line")
+    );
+    let backup = record.backup_path.unwrap();
+    assert_eq!(std::fs::read_to_string(backup).unwrap(), "user-content\n");
+    let manifest = load_manifest(&manifest_path).unwrap();
+    assert_eq!(manifest.integrations.len(), 1);
+    assert_eq!(
+        manifest.integrations[0].post_write_sha256,
+        plan.after_sha256
+    );
+}
+
+#[test]
+fn apply_rejects_a_stale_precondition_without_mutation() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("tool.conf");
+    let manifest_path = temp.path().join("integrations.json");
+    std::fs::write(&target, "before\n").unwrap();
+    let descriptor = descriptor(target.clone(), "managed line", None);
+    let plan = plan_install(&descriptor).unwrap();
+    std::fs::write(&target, "changed-after-preview\n").unwrap();
+
+    assert!(
+        apply_plan(
+            &plan,
+            &descriptor,
+            &manifest_path,
+            &temp.path().join("backups")
+        )
+        .is_err()
+    );
+    assert_eq!(
+        std::fs::read_to_string(target).unwrap(),
+        "changed-after-preview\n"
+    );
+    assert!(!manifest_path.exists());
+}
+
+#[test]
+fn validator_failure_rolls_back_target_and_preserves_manifest() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("tool.conf");
+    let manifest_path = temp.path().join("integrations.json");
+    std::fs::write(&target, "original\n").unwrap();
+    save_manifest_atomic(&manifest_path, &IntegrationManifest::default()).unwrap();
+    let manifest_before = std::fs::read(&manifest_path).unwrap();
+    let descriptor = descriptor(
+        target.clone(),
+        "managed line",
+        Some(Arc::new(ContentValidator {
+            required: "impossible-value",
+        })),
+    );
+    let plan = plan_install(&descriptor).unwrap();
+
+    assert!(
+        apply_plan(
+            &plan,
+            &descriptor,
+            &manifest_path,
+            &temp.path().join("backups")
+        )
+        .is_err()
+    );
+    assert_eq!(std::fs::read_to_string(target).unwrap(), "original\n");
+    assert_eq!(std::fs::read(manifest_path).unwrap(), manifest_before);
 }
