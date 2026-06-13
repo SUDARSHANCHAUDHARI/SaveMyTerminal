@@ -3,16 +3,22 @@ use serde_json::{Map, Value, json};
 use std::{path::Path, sync::Arc};
 
 pub fn descriptors(home: &Path) -> Vec<JsonDescriptor> {
+    descriptors_with_codex_home(home, None)
+}
+
+pub fn descriptors_with_codex_home(home: &Path, codex_home: Option<&Path>) -> Vec<JsonDescriptor> {
     [NativeAgent::Codex, NativeAgent::Claude, NativeAgent::Gemini]
         .into_iter()
-        .map(|agent| descriptor(home, agent))
+        .map(|agent| descriptor(home, codex_home, agent))
         .collect()
 }
 
-fn descriptor(home: &Path, agent: NativeAgent) -> JsonDescriptor {
+fn descriptor(home: &Path, codex_home: Option<&Path>, agent: NativeAgent) -> JsonDescriptor {
     let (target, events) = match agent {
         NativeAgent::Codex => (
-            home.join(".codex/hooks.json"),
+            codex_home
+                .map_or_else(|| home.join(".codex"), Path::to_path_buf)
+                .join("hooks.json"),
             vec![
                 "SessionStart",
                 "UserPromptSubmit",
@@ -78,6 +84,9 @@ fn install_hooks(
     let hooks = object_entry(root, "hooks")?;
     for event in events {
         let groups = array_entry(hooks, event)?;
+        if matches!(agent, NativeAgent::Codex) {
+            remove_matching_handlers(groups, command, managed_name);
+        }
         if groups.iter().any(|group| {
             group
                 .get("hooks")
@@ -109,9 +118,31 @@ fn install_hooks(
                 "description": "Report privacy-safe lifecycle metadata locally"
             }),
         };
-        groups.push(json!({"matcher": "*", "hooks": [handler]}));
+        let group = match agent {
+            // Omitting the matcher means "all events" and works across Codex
+            // versions that do not special-case "*" as a wildcard regex.
+            NativeAgent::Codex => json!({"hooks": [handler]}),
+            NativeAgent::Claude | NativeAgent::Gemini => {
+                json!({"matcher": "*", "hooks": [handler]})
+            }
+        };
+        groups.push(group);
     }
     Ok(())
+}
+
+fn remove_matching_handlers(groups: &mut Vec<Value>, command: &str, managed_name: Option<&str>) {
+    for group in groups.iter_mut() {
+        if let Some(handlers) = group.get_mut("hooks").and_then(Value::as_array_mut) {
+            handlers.retain(|handler| !handler_matches(handler, command, managed_name));
+        }
+    }
+    groups.retain(|group| {
+        group
+            .get("hooks")
+            .and_then(Value::as_array)
+            .is_none_or(|handlers| !handlers.is_empty())
+    });
 }
 
 fn uninstall_hooks(
@@ -130,17 +161,7 @@ fn uninstall_hooks(
         let Some(groups) = hooks.get_mut(*event).and_then(Value::as_array_mut) else {
             continue;
         };
-        for group in groups.iter_mut() {
-            if let Some(handlers) = group.get_mut("hooks").and_then(Value::as_array_mut) {
-                handlers.retain(|handler| !handler_matches(handler, command, managed_name));
-            }
-        }
-        groups.retain(|group| {
-            group
-                .get("hooks")
-                .and_then(Value::as_array)
-                .is_none_or(|handlers| !handlers.is_empty())
-        });
+        remove_matching_handlers(groups, command, managed_name);
     }
     hooks.retain(|_, value| value.as_array().is_none_or(|items| !items.is_empty()));
     if hooks.is_empty() {
