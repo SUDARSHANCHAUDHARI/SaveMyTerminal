@@ -30,6 +30,10 @@ function escapeText(value) {
   return node.innerHTML;
 }
 
+function escapeAttribute(value) {
+  return escapeText(value).replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
 function renderLive() {
   const grid = byId("live-grid");
   byId("active-count").textContent = state.sessions.length;
@@ -90,7 +94,7 @@ function renderHistory(page) {
       <td>${formatDuration(session.duration_ms)}</td>
       <td>${session.peak_cpu_percent === null ? "Unavailable" : `${session.peak_cpu_percent.toFixed(1)}%`}</td>
       <td>${formatBytes(session.peak_memory_bytes)}</td>
-      <td><button class="row-delete" data-delete="${session.session_id}" aria-label="Delete ${escapeText(session.agent_id)} session">Delete</button></td>
+      <td><button class="row-delete" data-delete="${session.session_id}" aria-label="Delete ${escapeAttribute(session.agent_id)} session">Delete</button></td>
     </tr>`).join("");
   document.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", () => confirmDelete(button.dataset.delete));

@@ -456,5 +456,63 @@ async fn dashboard_assets_are_embedded_same_origin_and_hardened() {
     assert!(!javascript.contains("localStorage"));
     assert!(!javascript.contains("https://"));
     assert!(!javascript.contains("http://"));
+    assert!(javascript.contains("function escapeAttribute"));
+    assert!(javascript.contains("&quot;"));
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn periodic_retention_removes_expired_finalized_history() {
+    let token = "secret";
+    let temp = tempfile::tempdir().unwrap();
+    let mut config = ServiceConfig::for_test(SecretString::from(token.to_owned()));
+    config.database_file = Some(temp.path().join("history.sqlite3"));
+    config.history_retention = Duration::from_millis(50);
+    config.history_cleanup_interval = Duration::from_millis(10);
+    let service = spawn_test_service(config).await.unwrap();
+    let client = reqwest::Client::new();
+    let session_id = Uuid::new_v4();
+    let mut started = Event::new(session_id, "generic", "unknown", EventKind::Started);
+    started.timestamp_ms = 1;
+    client
+        .post(format!("{}/v1/events", service.base_url))
+        .bearer_auth(token)
+        .json(&started)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    let mut completed = Event::new(
+        session_id,
+        "generic",
+        "unknown",
+        EventKind::Completed { exit_code: 0 },
+    );
+    completed.timestamp_ms = 2;
+    client
+        .post(format!("{}/v1/events", service.base_url))
+        .bearer_auth(token)
+        .json(&completed)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    let history = client
+        .get(format!("{}/v1/history", service.base_url))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+
+    assert_eq!(history["total"], 0);
     service.shutdown().await;
 }

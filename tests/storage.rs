@@ -346,3 +346,52 @@ fn unavailable_history_store_reports_a_stable_error() {
         "session history is unavailable"
     );
 }
+
+#[test]
+fn sqlite_schema_contains_no_prohibited_data_columns() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("history.sqlite3");
+    let _store = SqliteStore::open(&path).unwrap();
+    let connection = rusqlite::Connection::open(path).unwrap();
+    let mut statement = connection.prepare("PRAGMA table_info(sessions)").unwrap();
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap()
+        .join(" ");
+
+    for prohibited in [
+        "prompt",
+        "response",
+        "output",
+        "command",
+        "argument",
+        "environment",
+        "working_directory",
+        "file_content",
+        "hostname",
+        "username",
+        "credential",
+    ] {
+        assert!(
+            !columns.contains(prohibited),
+            "found prohibited column {prohibited}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn sqlite_database_file_is_user_only() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("history.sqlite3");
+    let _store = SqliteStore::open(&path).unwrap();
+
+    assert_eq!(
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}

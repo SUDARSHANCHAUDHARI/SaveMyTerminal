@@ -6,6 +6,16 @@ use serde_json::Value;
 use uuid::Uuid;
 
 #[test]
+fn repository_has_no_active_github_actions_workflow() {
+    let workflows = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows");
+    let active = std::fs::read_dir(workflows)
+        .map(|entries| entries.filter_map(Result::ok).count())
+        .unwrap_or(0);
+
+    assert_eq!(active, 0);
+}
+
+#[test]
 fn event_round_trip_contains_only_approved_top_level_fields() {
     let event = Event::new(Uuid::new_v4(), "generic", "unknown", EventKind::Started);
     let value = serde_json::to_value(event).unwrap();

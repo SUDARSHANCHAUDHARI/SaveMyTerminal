@@ -68,6 +68,12 @@ impl HistoryStore {
             .map_err(|_| HistoryUnavailable)
     }
 
+    pub fn cleanup_before(&self, cutoff_ms: u64) -> Result<usize, HistoryUnavailable> {
+        self.store()?
+            .cleanup_before(cutoff_ms)
+            .map_err(|_| HistoryUnavailable)
+    }
+
     fn store(&self) -> Result<&SqliteStore, HistoryUnavailable> {
         match self {
             Self::Available(store) => Ok(store),

@@ -24,6 +24,8 @@ pub struct ServiceConfig {
     pub lock_file: Option<PathBuf>,
     pub database_file: Option<PathBuf>,
     pub dashboard_launch_ttl: Duration,
+    pub history_retention: Duration,
+    pub history_cleanup_interval: Duration,
     pub idle_timeout: Duration,
 }
 
@@ -35,6 +37,8 @@ impl ServiceConfig {
             lock_file: None,
             database_file: None,
             dashboard_launch_ttl: Duration::from_secs(60),
+            history_retention: Duration::from_secs(30 * 24 * 60 * 60),
+            history_cleanup_interval: Duration::from_secs(60 * 60),
             idle_timeout: Duration::from_secs(300),
         }
     }
@@ -91,11 +95,8 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         Some(path) => match SqliteStore::open(path) {
             Ok(store) => {
                 let _ = store.recover_interrupted();
-                let retention_ms = Duration::from_secs(30 * 24 * 60 * 60).as_millis() as u64;
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|duration| duration.as_millis() as u64)
-                    .unwrap_or(0);
+                let retention_ms = duration_ms(config.history_retention);
+                let now_ms = unix_time_ms();
                 let _ = store.cleanup_before(now_ms.saturating_sub(retention_ms));
                 HistoryStore::available(store)
             }
@@ -135,8 +136,21 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
     });
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     let idle_timeout = config.idle_timeout;
+    let history_retention = config.history_retention;
+    let history_cleanup_interval = config.history_cleanup_interval;
     let task = tokio::spawn(async move {
         let _service_lock = service_lock;
+        let cleanup_history = coordinator.history_store();
+        let cleanup_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(history_cleanup_interval);
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                let store = cleanup_history.clone();
+                let cutoff = unix_time_ms().saturating_sub(duration_ms(history_retention));
+                let _ = tokio::task::spawn_blocking(move || store.cleanup_before(cutoff)).await;
+            }
+        });
         let idle_coordinator = coordinator.clone();
         let idle = async move {
             loop {
@@ -157,6 +171,7 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
                 }
             })
             .await;
+        cleanup_task.abort();
         if let Some(path) = discovery_file {
             let _ = std::fs::remove_file(path);
         }
@@ -169,4 +184,16 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         shutdown_tx,
         task,
     })
+}
+
+fn unix_time_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+        .unwrap_or(0)
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }

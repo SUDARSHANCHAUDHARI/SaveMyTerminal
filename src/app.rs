@@ -46,6 +46,8 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                 lock_file: Some(paths.runtime_dir.join("service.lock")),
                 database_file: Some(paths.database_file()),
                 dashboard_launch_ttl: std::time::Duration::from_secs(60),
+                history_retention: std::time::Duration::from_secs(30 * 24 * 60 * 60),
+                history_cleanup_interval: std::time::Duration::from_secs(60 * 60),
                 idle_timeout: std::time::Duration::from_millis(args.idle_timeout_ms),
             })
             .await?;

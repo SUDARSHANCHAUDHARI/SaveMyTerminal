@@ -24,8 +24,10 @@ impl SqliteStore {
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
+            protect_directory(parent)?;
         }
         let mut connection = Connection::open(path)?;
+        protect_database(path)?;
         connection.busy_timeout(Duration::from_millis(500))?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
@@ -482,4 +484,30 @@ fn row_optional_u64(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<O
     row.get::<_, Option<i64>>(index)?
         .map(|value| u64::try_from(value).map_err(to_sql_error))
         .transpose()
+}
+
+#[cfg(unix)]
+fn protect_directory(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn protect_directory(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn protect_database(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn protect_database(_path: &Path) -> Result<()> {
+    Ok(())
 }
