@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SaveMyTerminal Observatory</title>
+  <link rel="stylesheet" href="/dashboard/app.css">
+  <script src="/dashboard/app.js" defer></script>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">LOCAL SESSION OBSERVATORY</p>
+      <h1>Save<span>My</span>Terminal</h1>
+    </div>
+    <div class="connection" id="connection" data-state="connecting">
+      <span class="pulse" aria-hidden="true"></span>
+      <span id="connection-label">Connecting</span>
+    </div>
+  </header>
+
+  <main>
+    <nav class="view-switcher" aria-label="Dashboard views">
+      <button class="view-button active" data-view="live" aria-pressed="true">Live</button>
+      <button class="view-button" data-view="history" aria-pressed="false">History</button>
+    </nav>
+
+    <section id="live-view" class="view active" aria-labelledby="live-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">NOW RUNNING</p>
+          <h2 id="live-title">Active sessions</h2>
+        </div>
+        <div class="counter"><strong id="active-count">0</strong><span>online</span></div>
+      </div>
+      <div id="live-grid" class="session-grid"></div>
+      <div id="live-empty" class="empty-state">
+        <span class="empty-glyph">_</span>
+        <p>No active sessions. Start an agent through <code>smt run</code>.</p>
+      </div>
+    </section>
+
+    <section id="history-view" class="view" aria-labelledby="history-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">LAST 30 DAYS</p>
+          <h2 id="history-title">Session history</h2>
+        </div>
+        <button id="purge-button" class="danger-button">Purge history</button>
+      </div>
+      <div id="stats-grid" class="stats-grid"></div>
+      <div class="history-panel">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Agent</th><th>Result</th><th>Started</th><th>Duration</th><th>CPU peak</th><th>Memory peak</th><th><span class="sr-only">Actions</span></th></tr></thead>
+            <tbody id="history-body"></tbody>
+          </table>
+        </div>
+        <div id="history-empty" class="empty-state"><p>No finalized sessions in local history.</p></div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="confirm-dialog">
+    <form method="dialog">
+      <p class="eyebrow">CONFIRM LOCAL DELETION</p>
+      <h2 id="confirm-title">Delete session?</h2>
+      <p id="confirm-message"></p>
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost-button">Cancel</button>
+        <button value="confirm" class="danger-button">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+</body>
+</html>

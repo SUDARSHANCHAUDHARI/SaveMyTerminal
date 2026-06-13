@@ -389,3 +389,72 @@ async fn connected_sse_client_prevents_idle_shutdown_until_disconnect() {
         .unwrap()
         .unwrap();
 }
+
+#[tokio::test]
+async fn dashboard_assets_are_embedded_same_origin_and_hardened() {
+    let token = "secret";
+    let service = spawn_test_service(ServiceConfig::for_test(SecretString::from(
+        token.to_owned(),
+    )))
+    .await
+    .unwrap();
+    let client = reqwest::Client::builder()
+        .redirect(Policy::none())
+        .build()
+        .unwrap();
+    let launch = client
+        .post(format!("{}/v1/dashboard-launch", service.base_url))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .json::<LaunchResponse>()
+        .await
+        .unwrap();
+    let launched = client.get(launch.launch_url).send().await.unwrap();
+    let cookie = launched.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+
+    let html_response = client
+        .get(format!("{}/dashboard", service.base_url))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(html_response.status(), StatusCode::OK);
+    assert_eq!(
+        html_response.headers()["content-type"],
+        "text/html; charset=utf-8"
+    );
+    assert_eq!(html_response.headers()["x-content-type-options"], "nosniff");
+    let csp = html_response.headers()["content-security-policy"]
+        .to_str()
+        .unwrap();
+    assert!(csp.contains("default-src 'self'"));
+    assert!(csp.contains("connect-src 'self'"));
+    let html = html_response.text().await.unwrap();
+    assert!(html.contains("/dashboard/app.css"));
+    assert!(html.contains("/dashboard/app.js"));
+    assert!(!html.contains("https://"));
+    assert!(!html.contains("http://"));
+
+    let javascript = client
+        .get(format!("{}/dashboard/app.js", service.base_url))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(!javascript.contains("localStorage"));
+    assert!(!javascript.contains("https://"));
+    assert!(!javascript.contains("http://"));
+    service.shutdown().await;
+}

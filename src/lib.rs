@@ -2,6 +2,7 @@ pub mod app;
 pub mod auth;
 pub mod cli;
 pub mod client;
+pub mod dashboard;
 pub mod paths;
 pub mod protocol;
 pub mod renderer;

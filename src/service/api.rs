@@ -46,6 +46,9 @@ pub fn router(state: ApiState) -> Router {
         .route("/v1/history", get(history).delete(purge_history))
         .route("/v1/history/stats", get(history_stats))
         .route("/v1/history/{session_id}", delete(delete_history))
+        .route("/dashboard", get(crate::dashboard::index))
+        .route("/dashboard/app.css", get(crate::dashboard::styles))
+        .route("/dashboard/app.js", get(crate::dashboard::script))
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), authenticate));
     Router::new()
