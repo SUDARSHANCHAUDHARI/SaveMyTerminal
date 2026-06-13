@@ -1,4 +1,6 @@
-use super::{IntegrationPlan, PlanAction, TextDescriptor, sha256_hex};
+use super::{
+    IntegrationPlan, PlanAction, TextDescriptor, Validator, json::JsonDescriptor, sha256_hex,
+};
 use crate::manifest::{IntegrationRecord, load_manifest, save_manifest_atomic};
 use std::{
     fs::OpenOptions,
@@ -30,9 +32,58 @@ pub enum ApplyError {
     Manifest(#[from] crate::manifest::ManifestError),
 }
 
+struct DescriptorRef<'a> {
+    id: &'a str,
+    marker_id: &'a str,
+    version: u32,
+    target: &'a Path,
+    validator: Option<&'a dyn Validator>,
+}
+
 pub fn apply_plan(
     plan: &IntegrationPlan,
     descriptor: &TextDescriptor,
+    manifest_path: &Path,
+    backup_dir: &Path,
+) -> Result<IntegrationRecord, ApplyError> {
+    apply_install(
+        plan,
+        DescriptorRef {
+            id: &descriptor.id,
+            marker_id: &descriptor.id,
+            version: descriptor.version,
+            target: &descriptor.target,
+            validator: descriptor.validator.as_deref(),
+        },
+        manifest_path,
+        backup_dir,
+    )
+}
+
+pub fn apply_json_plan(
+    plan: &IntegrationPlan,
+    descriptor: &JsonDescriptor,
+    manifest_path: &Path,
+    backup_dir: &Path,
+) -> Result<IntegrationRecord, ApplyError> {
+    let marker_id = format!("json-{}", descriptor.id);
+    apply_install(
+        plan,
+        DescriptorRef {
+            id: &descriptor.id,
+            marker_id: &marker_id,
+            version: descriptor.version,
+            target: &descriptor.target,
+            validator: descriptor.validator.as_deref(),
+        },
+        manifest_path,
+        backup_dir,
+    )
+}
+
+fn apply_install(
+    plan: &IntegrationPlan,
+    descriptor: DescriptorRef<'_>,
     manifest_path: &Path,
     backup_dir: &Path,
 ) -> Result<IntegrationRecord, ApplyError> {
@@ -75,7 +126,6 @@ pub fn apply_plan(
     }
     let validation = descriptor
         .validator
-        .as_ref()
         .map(|validator| validator.validate(&plan.target))
         .transpose();
     if let Err(message) = validation {
@@ -84,10 +134,10 @@ pub fn apply_plan(
     }
 
     let record = IntegrationRecord {
-        id: descriptor.id.clone(),
+        id: descriptor.id.to_owned(),
         descriptor_version: descriptor.version,
-        target_path: descriptor.target.clone(),
-        marker_id: descriptor.id.clone(),
+        target_path: descriptor.target.to_path_buf(),
+        marker_id: descriptor.marker_id.to_owned(),
         backup_path,
         post_write_sha256: plan.after_sha256.clone(),
         applied_at_unix_ms: now_ms(),
@@ -110,7 +160,41 @@ pub fn apply_uninstall(
     manifest_path: &Path,
     backup_dir: &Path,
 ) -> Result<(), ApplyError> {
-    if plan.id != descriptor.id || plan.target != descriptor.target {
+    apply_remove(
+        plan,
+        &descriptor.id,
+        &descriptor.target,
+        descriptor.validator.as_deref(),
+        manifest_path,
+        backup_dir,
+    )
+}
+
+pub fn apply_json_uninstall(
+    plan: &IntegrationPlan,
+    descriptor: &JsonDescriptor,
+    manifest_path: &Path,
+    backup_dir: &Path,
+) -> Result<(), ApplyError> {
+    apply_remove(
+        plan,
+        &descriptor.id,
+        &descriptor.target,
+        descriptor.validator.as_deref(),
+        manifest_path,
+        backup_dir,
+    )
+}
+
+fn apply_remove(
+    plan: &IntegrationPlan,
+    id: &str,
+    target: &Path,
+    validator: Option<&dyn Validator>,
+    manifest_path: &Path,
+    backup_dir: &Path,
+) -> Result<(), ApplyError> {
+    if plan.id != id || plan.target != target {
         return Err(ApplyError::DescriptorMismatch);
     }
     let original = std::fs::read(&plan.target).map_err(|source| ApplyError::Read {
@@ -127,16 +211,14 @@ pub fn apply_uninstall(
     })?;
     let backup = backup_dir.join(format!(
         "{}-{}-{}.bak",
-        descriptor.id,
+        id,
         now_ms(),
         &sha256_hex(&original)[..8]
     ));
     write_atomic(&backup, &original)?;
     write_atomic(&plan.target, &plan.proposed)?;
 
-    let validation = descriptor
-        .validator
-        .as_ref()
+    let validation = validator
         .map(|validator| validator.validate(&plan.target))
         .transpose();
     if let Err(message) = validation {
@@ -145,9 +227,7 @@ pub fn apply_uninstall(
     }
 
     let mut manifest = load_manifest(manifest_path)?;
-    manifest
-        .integrations
-        .retain(|record| record.id != descriptor.id);
+    manifest.integrations.retain(|record| record.id != id);
     if let Err(error) = save_manifest_atomic(manifest_path, &manifest) {
         write_atomic(&plan.target, &original)?;
         return Err(error.into());

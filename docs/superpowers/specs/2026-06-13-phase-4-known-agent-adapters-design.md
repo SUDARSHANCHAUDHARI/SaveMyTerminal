@@ -64,9 +64,7 @@ Tool category mapping uses only `tool_name`:
 
 ## Session Semantics
 
-Native hook processes may begin mid-session after setup or service restart. Before each non-start event, the hook path sends an idempotent `Started` event for the deterministic session UUID, then sends the lifecycle event. The registry accepts duplicate starts only when adapter and agent identities match, returning the existing non-terminal session unchanged.
-
-If a deterministic session UUID already identifies a terminal session, a later `SessionStart` replaces it with a fresh starting snapshot using the new event timestamp. This supports native resume and clear flows without retaining raw native identifiers.
+Native hook processes may begin mid-session after setup or service restart. A non-start event is sent normally first. If delivery fails because no matching local session exists, the hook path sends `Started` for the deterministic session UUID and retries the lifecycle event. Explicit `SessionStart` delivery remains best effort and duplicate starts are harmless observer failures.
 
 ## Integration Descriptors
 

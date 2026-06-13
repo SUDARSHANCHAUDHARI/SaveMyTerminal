@@ -181,19 +181,26 @@ fn check_manifest(paths: &AppPaths, checks: &mut Vec<CheckResult>) {
                 continue;
             }
         };
-        let text = String::from_utf8_lossy(&bytes);
-        let begin = format!(">>> SaveMyTerminal:{} >>>", record.marker_id);
-        let end = format!("<<< SaveMyTerminal:{} <<<", record.marker_id);
-        if text.matches(&begin).count() == 1 && text.matches(&end).count() == 1 {
+        let ownership_intact = if let Some(agent) = record.marker_id.strip_prefix("json-") {
+            serde_json::from_slice::<serde_json::Value>(&bytes)
+                .ok()
+                .is_some_and(|value| json_contains_command(&value, &format!("smt hook {agent}")))
+        } else {
+            let text = String::from_utf8_lossy(&bytes);
+            let begin = format!(">>> SaveMyTerminal:{} >>>", record.marker_id);
+            let end = format!("<<< SaveMyTerminal:{} <<<", record.marker_id);
+            text.matches(&begin).count() == 1 && text.matches(&end).count() == 1
+        };
+        if ownership_intact {
             checks.push(CheckResult::pass(
                 "manifest_markers",
-                format!("managed markers for {:?} are intact", record.id),
+                format!("managed ownership for {:?} is intact", record.id),
             ));
         } else {
             checks.push(CheckResult::fail(
                 "manifest_markers",
                 format!(
-                    "managed markers for {:?} are missing or ambiguous",
+                    "managed ownership for {:?} is missing or ambiguous",
                     record.id
                 ),
             ));
@@ -229,6 +236,21 @@ fn check_manifest(paths: &AppPaths, checks: &mut Vec<CheckResult>) {
                 ));
             }
         }
+    }
+}
+
+fn json_contains_command(value: &serde_json::Value, command: &str) -> bool {
+    match value {
+        serde_json::Value::Object(object) => {
+            object.get("command").and_then(serde_json::Value::as_str) == Some(command)
+                || object
+                    .values()
+                    .any(|value| json_contains_command(value, command))
+        }
+        serde_json::Value::Array(items) => items
+            .iter()
+            .any(|value| json_contains_command(value, command)),
+        _ => false,
     }
 }
 
