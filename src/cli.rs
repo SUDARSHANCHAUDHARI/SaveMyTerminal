@@ -18,6 +18,8 @@ pub enum Command {
     Dashboard,
     /// Report whether the local service is reachable.
     Status,
+    /// Print a privacy-safe active-session view for terminal integrations.
+    Snapshot(SnapshotArgs),
     /// Receive privacy-safe lifecycle metadata from a supported agent hook.
     Hook(HookArgs),
     /// Detect local capabilities and preview or apply setup changes.
@@ -28,6 +30,20 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Preview or remove SaveMyTerminal-managed integrations.
     Uninstall(UninstallArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct SnapshotArgs {
+    #[command(flatten)]
+    pub paths: PathOverrides,
+    #[arg(long, value_enum, default_value_t = SnapshotFormat::Text)]
+    pub format: SnapshotFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum SnapshotFormat {
+    Text,
+    Json,
 }
 
 #[derive(Debug, Args)]

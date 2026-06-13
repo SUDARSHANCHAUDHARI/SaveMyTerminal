@@ -230,6 +230,41 @@ fn setup_and_uninstall_manage_an_explicit_native_agent_hook() {
 }
 
 #[test]
+fn setup_and_uninstall_manage_a_terminal_renderer_and_owned_assets() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let target = home.join(".wezterm.lua");
+    std::fs::write(&target, "local config = {}\nreturn config\n").unwrap();
+
+    phase_command(&temp, "setup")
+        .args(["--integration", "wezterm", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("integration applied: wezterm"));
+    let installed = std::fs::read_to_string(&target).unwrap();
+    assert!(installed.starts_with("-- >>> SaveMyTerminal:wezterm >>>"));
+    assert!(installed.ends_with("return config\n"));
+    assert!(
+        paths(&temp)
+            .config_dir
+            .join("assets/savemyterminal-ambient.png")
+            .exists()
+    );
+
+    phase_command(&temp, "uninstall")
+        .args(["--integration", "wezterm", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("integration removed: wezterm"));
+    assert_eq!(
+        std::fs::read_to_string(target).unwrap(),
+        "local config = {}\nreturn config\n"
+    );
+    assert!(!paths(&temp).config_dir.join("assets").exists());
+}
+
+#[test]
 fn uninstall_preview_preserves_owned_config_and_history() {
     let temp = tempfile::tempdir().unwrap();
     let app_paths = paths(&temp);

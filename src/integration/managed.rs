@@ -81,6 +81,27 @@ pub fn insert_or_replace(
     Ok(updated)
 }
 
+pub fn insert_or_replace_prepend(
+    original: &str,
+    marker: &Marker,
+    body: &str,
+) -> Result<String, ManagedError> {
+    let block = format!(
+        "{}\n{}\n{}\n",
+        marker.begin(),
+        body.trim_end_matches(['\r', '\n']),
+        marker.end()
+    );
+    if let Some((start, end)) = locate(original, marker)? {
+        let mut updated = String::with_capacity(original.len() - (end - start) + block.len());
+        updated.push_str(&original[..start]);
+        updated.push_str(&block);
+        updated.push_str(&original[end..]);
+        return Ok(updated);
+    }
+    Ok(format!("{block}{original}"))
+}
+
 pub fn remove(original: &str, marker: &Marker) -> Result<String, ManagedError> {
     let (start, end) = locate(original, marker)?.ok_or(ManagedError::Missing)?;
     let mut updated = String::with_capacity(original.len() - (end - start));

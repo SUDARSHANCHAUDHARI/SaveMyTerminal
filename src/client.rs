@@ -120,6 +120,18 @@ impl ServiceClient {
         Ok(())
     }
 
+    pub async fn active_sessions(&self) -> Result<Vec<crate::protocol::SessionSnapshot>> {
+        Ok(self
+            .client
+            .get(format!("{}/v1/sessions/active", self.base_url))
+            .bearer_auth(self.token.expose_secret())
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
+    }
+
     pub async fn dashboard_launch_url(&self) -> Result<String> {
         let response = self
             .client

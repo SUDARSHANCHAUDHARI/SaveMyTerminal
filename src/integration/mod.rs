@@ -23,6 +23,13 @@ pub struct TextDescriptor {
     pub marker: Marker,
     pub body: String,
     pub validator: Option<Arc<dyn Validator>>,
+    placement: TextPlacement,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TextPlacement {
+    Append,
+    Prepend,
 }
 
 impl TextDescriptor {
@@ -46,7 +53,21 @@ impl TextDescriptor {
             marker,
             body: body.into(),
             validator,
+            placement: TextPlacement::Append,
         })
+    }
+
+    pub fn new_prepend(
+        id: impl Into<String>,
+        version: u32,
+        target: PathBuf,
+        comment_prefix: impl Into<String>,
+        body: impl Into<String>,
+        validator: Option<Arc<dyn Validator>>,
+    ) -> Result<Self, PlanError> {
+        let mut descriptor = Self::new(id, version, target, comment_prefix, body, validator)?;
+        descriptor.placement = TextPlacement::Prepend;
+        Ok(descriptor)
     }
 }
 
@@ -103,7 +124,13 @@ pub fn plan_install(descriptor: &TextDescriptor) -> Result<IntegrationPlan, Plan
         }
         None => "",
     };
-    let proposed = insert_or_replace(original, &descriptor.marker, &descriptor.body)?.into_bytes();
+    let proposed = match descriptor.placement {
+        TextPlacement::Append => insert_or_replace(original, &descriptor.marker, &descriptor.body)?,
+        TextPlacement::Prepend => {
+            managed::insert_or_replace_prepend(original, &descriptor.marker, &descriptor.body)?
+        }
+    }
+    .into_bytes();
     let action = match &before {
         None => PlanAction::Create,
         Some(bytes) if bytes == &proposed => PlanAction::NoChange,
