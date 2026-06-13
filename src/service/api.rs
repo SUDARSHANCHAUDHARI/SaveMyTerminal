@@ -1,27 +1,38 @@
-use crate::{protocol::Event, service::SessionCoordinator};
+use crate::{
+    protocol::Event,
+    service::{DashboardAuth, SessionCoordinator},
+};
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Request, State},
-    http::{StatusCode, header::AUTHORIZATION},
+    extract::{DefaultBodyLimit, Query, Request, State},
+    http::{HeaderValue, Method, StatusCode, header::AUTHORIZATION},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use cookie::{Cookie, SameSite};
 use secrecy::{ExposeSecret, SecretString};
+use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 
 #[derive(Clone)]
 pub struct ApiState {
     pub coordinator: SessionCoordinator,
     pub token: SecretString,
+    pub dashboard_auth: DashboardAuth,
+    pub base_url: String,
 }
 
 pub fn router(state: ApiState) -> Router {
-    Router::new()
+    let protected = Router::new()
         .route("/v1/health", get(|| async { StatusCode::NO_CONTENT }))
         .route("/v1/events", post(post_event))
+        .route("/v1/dashboard-launch", post(create_dashboard_launch))
         .layer(DefaultBodyLimit::max(16 * 1024))
-        .layer(middleware::from_fn_with_state(state.clone(), authenticate))
+        .layer(middleware::from_fn_with_state(state.clone(), authenticate));
+    Router::new()
+        .route("/dashboard/launch", get(consume_dashboard_launch))
+        .merge(protected)
         .with_state(state)
 }
 
@@ -30,21 +41,91 @@ async fn authenticate(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let supplied = request
+    let supplied_bearer = request
         .headers()
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
         .unwrap_or_default();
-    if supplied
+    let bearer_matches = supplied_bearer
         .as_bytes()
         .ct_eq(state.token.expose_secret().as_bytes())
         .unwrap_u8()
-        != 1
-    {
+        == 1;
+    if bearer_matches {
+        return Ok(next.run(request).await);
+    }
+
+    let browser_session = request
+        .headers()
+        .get("cookie")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| {
+            Cookie::split_parse(value)
+                .filter_map(Result::ok)
+                .find(|cookie| cookie.name() == "smt_dashboard")
+                .map(|cookie| cookie.value().to_owned())
+        });
+    let browser_matches = browser_session
+        .as_deref()
+        .is_some_and(|session| state.dashboard_auth.validates_session(session));
+    if !browser_matches {
         return Err(StatusCode::UNAUTHORIZED);
     }
+    if is_mutation(request.method()) {
+        let same_origin = request
+            .headers()
+            .get("origin")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|origin| origin == state.base_url);
+        if !same_origin {
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
     Ok(next.run(request).await)
+}
+
+#[derive(Serialize)]
+struct DashboardLaunchResponse {
+    launch_url: String,
+}
+
+async fn create_dashboard_launch(State(state): State<ApiState>) -> Json<DashboardLaunchResponse> {
+    let token = state.dashboard_auth.create_launch_token();
+    Json(DashboardLaunchResponse {
+        launch_url: format!("{}/dashboard/launch?token={token}", state.base_url),
+    })
+}
+
+#[derive(Deserialize)]
+struct DashboardLaunchQuery {
+    token: String,
+}
+
+async fn consume_dashboard_launch(
+    State(state): State<ApiState>,
+    Query(query): Query<DashboardLaunchQuery>,
+) -> Result<Response, StatusCode> {
+    let session = state
+        .dashboard_auth
+        .consume_launch_token(&query.token)
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let cookie = Cookie::build(("smt_dashboard", session))
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .path("/")
+        .build()
+        .to_string();
+    let mut response = Redirect::to("/dashboard").into_response();
+    response.headers_mut().insert(
+        "set-cookie",
+        HeaderValue::from_str(&cookie).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+    );
+    Ok(response)
+}
+
+fn is_mutation(method: &Method) -> bool {
+    !matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
 }
 
 async fn post_event(

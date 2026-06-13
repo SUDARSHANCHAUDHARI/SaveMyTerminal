@@ -20,6 +20,7 @@ pub async fn run() -> anyhow::Result<i32> {
                 discovery_file: Some(paths.discovery_file()),
                 lock_file: Some(paths.runtime_dir.join("service.lock")),
                 database_file: Some(paths.database_file()),
+                dashboard_launch_ttl: std::time::Duration::from_secs(60),
                 idle_timeout: std::time::Duration::from_millis(args.idle_timeout_ms),
             })
             .await?;

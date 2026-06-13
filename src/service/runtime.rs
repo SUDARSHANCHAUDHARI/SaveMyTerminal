@@ -1,5 +1,5 @@
 use crate::service::{
-    SessionCoordinator, SessionRegistry,
+    DashboardAuth, SessionCoordinator, SessionRegistry,
     api::{ApiState, router},
 };
 use crate::storage::{HistoryStore, SqliteStore};
@@ -19,6 +19,7 @@ pub struct ServiceConfig {
     pub discovery_file: Option<PathBuf>,
     pub lock_file: Option<PathBuf>,
     pub database_file: Option<PathBuf>,
+    pub dashboard_launch_ttl: Duration,
     pub idle_timeout: Duration,
 }
 
@@ -29,6 +30,7 @@ impl ServiceConfig {
             discovery_file: None,
             lock_file: None,
             database_file: None,
+            dashboard_launch_ttl: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(300),
         }
     }
@@ -122,6 +124,8 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
     let app = router(ApiState {
         coordinator: coordinator.clone(),
         token: config.token,
+        dashboard_auth: DashboardAuth::new(config.dashboard_launch_ttl),
+        base_url: base_url.clone(),
     });
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     let idle_timeout = config.idle_timeout;
