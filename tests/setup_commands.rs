@@ -26,6 +26,9 @@ fn phase_command(temp: &tempfile::TempDir, name: &str) -> Command {
         "--data-dir",
         temp.path().join("data").to_str().unwrap(),
     ]);
+    if matches!(name, "setup" | "uninstall") {
+        command.args(["--home-dir", temp.path().join("home").to_str().unwrap()]);
+    }
     command
 }
 
@@ -172,6 +175,58 @@ fn setup_rejects_unknown_selected_integrations() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("not-registered"));
+}
+
+#[test]
+fn setup_and_uninstall_manage_an_explicit_native_agent_hook() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let target = home.join(".codex/hooks.json");
+
+    phase_command(&temp, "setup")
+        .args(["--integration", "codex"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("integration codex: Create"));
+    assert!(!target.exists());
+
+    phase_command(&temp, "setup")
+        .args(["--integration", "codex", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("integration applied: codex"));
+    let installed = std::fs::read_to_string(&target).unwrap();
+    assert!(installed.contains("smt hook codex"));
+    assert_eq!(
+        savemyterminal::manifest::load_manifest(&paths(&temp).manifest_file())
+            .unwrap()
+            .integrations
+            .len(),
+        1
+    );
+    phase_command(&temp, "doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "PASS manifest_markers: managed ownership for \"codex\" is intact",
+        ));
+
+    phase_command(&temp, "uninstall")
+        .args(["--integration", "codex", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("integration removed: codex"));
+    assert!(
+        !std::fs::read_to_string(target)
+            .unwrap()
+            .contains("smt hook codex")
+    );
+    assert!(
+        savemyterminal::manifest::load_manifest(&paths(&temp).manifest_file())
+            .unwrap()
+            .integrations
+            .is_empty()
+    );
 }
 
 #[test]

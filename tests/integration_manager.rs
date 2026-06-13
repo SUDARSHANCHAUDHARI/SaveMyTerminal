@@ -1,6 +1,8 @@
 use savemyterminal::{
     integration::{
-        PlanAction, TextDescriptor, Validator, apply_plan, apply_uninstall,
+        PlanAction, TextDescriptor, Validator, apply_json_plan, apply_json_uninstall, apply_plan,
+        apply_uninstall,
+        json::{plan_install as plan_json_install, plan_uninstall as plan_json_uninstall},
         managed::{BlockState, Marker, insert_or_replace, inspect, remove},
         plan_install, plan_uninstall,
     },
@@ -13,6 +15,70 @@ use std::{
 
 fn marker() -> Marker {
     Marker::new("example", "#").unwrap()
+}
+
+#[test]
+fn agent_json_plans_preserve_unrelated_settings_and_remove_only_owned_hooks() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let descriptor = savemyterminal::agents::descriptors(&home)
+        .into_iter()
+        .find(|descriptor| descriptor.id == "claude")
+        .unwrap();
+    std::fs::create_dir_all(descriptor.target.parent().unwrap()).unwrap();
+    std::fs::write(
+        &descriptor.target,
+        r#"{"theme":"dark","hooks":{"Stop":[{"matcher":"*","hooks":[{"type":"command","command":"user-hook"}]}]}}"#,
+    )
+    .unwrap();
+    let manifest = temp.path().join("manifest.json");
+    let backups = temp.path().join("backups");
+
+    let install = plan_json_install(&descriptor).unwrap();
+    apply_json_plan(&install, &descriptor, &manifest, &backups).unwrap();
+    let installed: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&descriptor.target).unwrap()).unwrap();
+    assert_eq!(installed["theme"], "dark");
+    let encoded = installed.to_string();
+    assert!(encoded.contains("user-hook"));
+    assert!(encoded.contains("smt hook claude"));
+
+    let repeated = plan_json_install(&descriptor).unwrap();
+    assert_eq!(repeated.action, PlanAction::NoChange);
+
+    let uninstall = plan_json_uninstall(&descriptor).unwrap();
+    apply_json_uninstall(&uninstall, &descriptor, &manifest, &backups).unwrap();
+    let removed = std::fs::read_to_string(&descriptor.target).unwrap();
+    assert!(removed.contains("user-hook"));
+    assert!(removed.contains("\"theme\": \"dark\""));
+    assert!(!removed.contains("smt hook claude"));
+}
+
+#[test]
+fn every_agent_descriptor_uses_the_documented_user_file_and_events() {
+    let temp = tempfile::tempdir().unwrap();
+    for descriptor in savemyterminal::agents::descriptors(temp.path()) {
+        let plan = plan_json_install(&descriptor).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&plan.preview).unwrap();
+        let hooks = value["hooks"].as_object().unwrap();
+        match descriptor.id.as_str() {
+            "codex" => {
+                assert!(descriptor.target.ends_with(".codex/hooks.json"));
+                assert!(hooks.contains_key("UserPromptSubmit"));
+                assert!(hooks.contains_key("Stop"));
+            }
+            "claude" => {
+                assert!(descriptor.target.ends_with(".claude/settings.json"));
+                assert!(hooks.contains_key("SessionEnd"));
+            }
+            "gemini" => {
+                assert!(descriptor.target.ends_with(".gemini/settings.json"));
+                assert!(hooks.contains_key("BeforeAgent"));
+                assert!(hooks.contains_key("AfterAgent"));
+            }
+            other => panic!("unexpected descriptor {other}"),
+        }
+    }
 }
 
 #[test]
@@ -204,6 +270,7 @@ fn successful_apply_creates_backup_and_manifest_record() {
     assert_eq!(std::fs::read_to_string(backup).unwrap(), "user-content\n");
     let manifest = load_manifest(&manifest_path).unwrap();
     assert_eq!(manifest.integrations.len(), 1);
+    assert_eq!(manifest.integrations[0].marker_id, "example");
     assert_eq!(
         manifest.integrations[0].post_write_sha256,
         plan.after_sha256

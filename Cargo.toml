@@ -37,7 +37,7 @@ tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-threa
 toml = "1.1.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-uuid = { version = "1", features = ["serde", "v4"] }
+uuid = { version = "1", features = ["serde", "v4", "v5"] }
 webbrowser = "1.2.1"
 
 [dev-dependencies]

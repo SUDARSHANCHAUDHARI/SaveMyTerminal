@@ -1,7 +1,8 @@
 mod apply;
+pub mod json;
 pub mod managed;
 
-pub use apply::{ApplyError, apply_plan, apply_uninstall};
+pub use apply::{ApplyError, apply_json_plan, apply_json_uninstall, apply_plan, apply_uninstall};
 
 use crate::integration::managed::{Marker, insert_or_replace, remove};
 use sha2::{Digest, Sha256};
@@ -77,6 +78,10 @@ pub enum PlanError {
     },
     #[error("integration target {0} is not UTF-8 text")]
     NonUtf8(PathBuf),
+    #[error("integration target {path} is not valid {format}")]
+    InvalidStructured { path: PathBuf, format: &'static str },
+    #[error("integration transform failed: {0}")]
+    Transform(String),
     #[error(transparent)]
     Managed(#[from] managed::ManagedError),
 }
@@ -145,7 +150,7 @@ pub(crate) fn sha256_hex(content: &[u8]) -> String {
         .collect()
 }
 
-fn bounded_preview(content: &[u8]) -> String {
+pub(crate) fn bounded_preview(content: &[u8]) -> String {
     const MAX_BYTES: usize = 4096;
     if content.len() <= MAX_BYTES {
         return String::from_utf8_lossy(content).into_owned();

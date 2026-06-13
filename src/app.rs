@@ -103,6 +103,11 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                 }
             }
         }
+        Command::Hook(args) => {
+            run_native_hook(args.agent).await;
+            println!("{{}}");
+            Ok(0)
+        }
         Command::Config(args) => {
             let paths = resolve_paths(args.paths)?;
             let settings_file = paths.settings_file();
@@ -148,14 +153,34 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
         }
         Command::Setup(args) => {
             let paths = resolve_paths(args.paths)?;
-            if let Some(id) = args.integrations.first() {
-                bail!("integration {id:?} is not registered in this phase");
-            }
             let report = crate::detection::detect();
             println!("detected os: {:?}", report.os);
             println!("detected shell: {:?}", report.shell);
             println!("detected agents: {:?}", report.agents);
             println!("detected terminals: {:?}", report.terminals);
+            let home = resolve_home(args.home_dir)?;
+            let descriptors = crate::agents::descriptors(&home);
+            let selected =
+                select_setup_descriptors(descriptors, &args.integrations, &report.agents)?;
+            for descriptor in &selected {
+                let plan = crate::integration::json::plan_install(descriptor)?;
+                println!(
+                    "integration {}: {:?} {}",
+                    descriptor.id,
+                    plan.action,
+                    descriptor.target.display()
+                );
+                print!("{}", plan.preview);
+                if args.apply {
+                    crate::integration::apply_json_plan(
+                        &plan,
+                        descriptor,
+                        &paths.manifest_file(),
+                        &paths.backup_dir(),
+                    )?;
+                    println!("integration applied: {}", descriptor.id);
+                }
+            }
             let settings_file = paths.settings_file();
             if settings_file.exists() {
                 crate::config::load(&settings_file)?;
@@ -196,8 +221,32 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
         }
         Command::Uninstall(args) => {
             let paths = resolve_paths(args.paths)?;
-            if let Some(id) = args.integrations.first() {
-                bail!("integration {id:?} is not registered in this phase");
+            let home = resolve_home(args.home_dir)?;
+            let manifest = crate::manifest::load_manifest(&paths.manifest_file())?;
+            let descriptors = crate::agents::descriptors(&home);
+            let selected = select_uninstall_descriptors(
+                descriptors,
+                &args.integrations,
+                &manifest.integrations,
+            )?;
+            for descriptor in &selected {
+                let plan = crate::integration::json::plan_uninstall(descriptor)?;
+                println!(
+                    "integration {}: {:?} {}",
+                    descriptor.id,
+                    plan.action,
+                    descriptor.target.display()
+                );
+                print!("{}", plan.preview);
+                if args.apply {
+                    crate::integration::apply_json_uninstall(
+                        &plan,
+                        descriptor,
+                        &paths.manifest_file(),
+                        &paths.backup_dir(),
+                    )?;
+                    println!("integration removed: {}", descriptor.id);
+                }
             }
             if !args.apply {
                 println!("preview: remove SaveMyTerminal-owned state");
@@ -231,6 +280,100 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             println!("uninstall applied");
             Ok(0)
         }
+    }
+}
+
+fn resolve_home(override_path: Option<std::path::PathBuf>) -> Result<std::path::PathBuf> {
+    if let Some(path) = override_path {
+        return Ok(path);
+    }
+    directories::BaseDirs::new()
+        .map(|directories| directories.home_dir().to_path_buf())
+        .context("home directory is unavailable")
+}
+
+fn select_setup_descriptors(
+    descriptors: Vec<crate::integration::json::JsonDescriptor>,
+    requested: &[String],
+    detected: &[crate::detection::AgentId],
+) -> Result<Vec<crate::integration::json::JsonDescriptor>> {
+    let detected_ids = detected
+        .iter()
+        .map(|agent| match agent {
+            crate::detection::AgentId::Codex => "codex",
+            crate::detection::AgentId::Claude => "claude",
+            crate::detection::AgentId::Gemini => "gemini",
+        })
+        .collect::<Vec<_>>();
+    select_descriptors(descriptors, requested, &detected_ids)
+}
+
+fn select_uninstall_descriptors(
+    descriptors: Vec<crate::integration::json::JsonDescriptor>,
+    requested: &[String],
+    records: &[crate::manifest::IntegrationRecord],
+) -> Result<Vec<crate::integration::json::JsonDescriptor>> {
+    let recorded_ids = records
+        .iter()
+        .map(|record| record.id.as_str())
+        .collect::<Vec<_>>();
+    select_descriptors(descriptors, requested, &recorded_ids)
+}
+
+fn select_descriptors(
+    descriptors: Vec<crate::integration::json::JsonDescriptor>,
+    requested: &[String],
+    defaults: &[&str],
+) -> Result<Vec<crate::integration::json::JsonDescriptor>> {
+    let selected_ids = if requested.is_empty() {
+        defaults.to_vec()
+    } else {
+        requested.iter().map(String::as_str).collect()
+    };
+    for id in &selected_ids {
+        if !descriptors.iter().any(|descriptor| descriptor.id == *id) {
+            bail!("integration {id:?} is not registered");
+        }
+    }
+    Ok(descriptors
+        .into_iter()
+        .filter(|descriptor| selected_ids.contains(&descriptor.id.as_str()))
+        .collect())
+}
+
+async fn run_native_hook(agent: crate::adapter::NativeAgent) {
+    use std::io::Read;
+
+    let mut input = Vec::new();
+    if std::io::stdin()
+        .take((crate::adapter::MAX_HOOK_INPUT_BYTES + 1) as u64)
+        .read_to_end(&mut input)
+        .is_err()
+    {
+        return;
+    }
+    let Ok(Some(event)) = crate::adapter::map_hook(agent, &input) else {
+        return;
+    };
+    let Ok(paths) = crate::paths::AppPaths::discover() else {
+        return;
+    };
+    let Ok(client) = crate::client::ServiceClient::ensure(&paths).await else {
+        return;
+    };
+    if client.send(&event).await.is_ok()
+        || matches!(event.kind, crate::protocol::EventKind::Started)
+    {
+        return;
+    }
+    let started = crate::protocol::Event::new(
+        event.session_id,
+        event.adapter_id.clone(),
+        event.agent_id.clone(),
+        crate::protocol::EventKind::Started,
+    );
+    if client.send(&started).await.is_ok() {
+        let _ = client.send(&event).await;
     }
 }
 

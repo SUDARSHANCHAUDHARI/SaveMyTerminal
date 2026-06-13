@@ -18,6 +18,8 @@ pub enum Command {
     Dashboard,
     /// Report whether the local service is reachable.
     Status,
+    /// Receive privacy-safe lifecycle metadata from a supported agent hook.
+    Hook(HookArgs),
     /// Detect local capabilities and preview or apply setup changes.
     Setup(SetupArgs),
     /// Inspect or change per-user settings.
@@ -26,6 +28,12 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Preview or remove SaveMyTerminal-managed integrations.
     Uninstall(UninstallArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct HookArgs {
+    #[arg(value_enum)]
+    pub agent: crate::adapter::NativeAgent,
 }
 
 #[derive(Debug, Args)]
@@ -136,4 +144,7 @@ pub struct UninstallArgs {
     /// Remove privacy-safe session history.
     #[arg(long)]
     pub purge_data: bool,
+    /// Override the home directory. Intended for tests.
+    #[arg(long, hide = true)]
+    pub home_dir: Option<PathBuf>,
 }
