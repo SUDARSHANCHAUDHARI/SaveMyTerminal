@@ -1,7 +1,32 @@
 use crate::cli::{Cli, Command};
+use anyhow::{Context, Result};
 use clap::Parser;
 
-pub async fn run() -> anyhow::Result<i32> {
+pub trait BrowserOpener {
+    fn open(&self, url: &str) -> Result<()>;
+}
+
+struct SystemBrowser;
+
+impl BrowserOpener for SystemBrowser {
+    fn open(&self, url: &str) -> Result<()> {
+        webbrowser::open(url)
+            .map(|_| ())
+            .context("system browser launch failed")
+    }
+}
+
+pub fn open_dashboard_url(opener: &dyn BrowserOpener, url: &str) -> Result<()> {
+    opener
+        .open(url)
+        .with_context(|| format!("could not open browser; open this local URL manually:\n{url}"))
+}
+
+pub async fn run() -> Result<i32> {
+    run_with_browser(&SystemBrowser).await
+}
+
+async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
     match Cli::parse().command {
         Command::Run(args) => {
             let mut renderer = crate::renderer::PlainRenderer::stderr(!args.no_status);
@@ -12,16 +37,28 @@ pub async fn run() -> anyhow::Result<i32> {
             let paths = crate::paths::AppPaths {
                 config_dir: args.config_dir.unwrap_or(discovered.config_dir),
                 runtime_dir: args.runtime_dir.unwrap_or(discovered.runtime_dir),
+                data_dir: args.data_dir.unwrap_or(discovered.data_dir),
             };
             let token = crate::auth::load_or_create_token(&paths.token_file())?;
             let service = crate::service::spawn_service(crate::service::ServiceConfig {
                 token,
                 discovery_file: Some(paths.discovery_file()),
                 lock_file: Some(paths.runtime_dir.join("service.lock")),
+                database_file: Some(paths.database_file()),
+                dashboard_launch_ttl: std::time::Duration::from_secs(60),
+                history_retention: std::time::Duration::from_secs(30 * 24 * 60 * 60),
+                history_cleanup_interval: std::time::Duration::from_secs(60 * 60),
                 idle_timeout: std::time::Duration::from_millis(args.idle_timeout_ms),
             })
             .await?;
             service.finished().await?;
+            Ok(0)
+        }
+        Command::Dashboard => {
+            let paths = crate::paths::AppPaths::discover()?;
+            let client = crate::client::ServiceClient::ensure(&paths).await?;
+            let launch_url = client.dashboard_launch_url().await?;
+            open_dashboard_url(browser, &launch_url)?;
             Ok(0)
         }
         Command::Status => {

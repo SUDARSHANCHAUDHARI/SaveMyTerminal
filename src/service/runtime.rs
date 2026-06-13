@@ -1,13 +1,18 @@
 use crate::service::{
-    SessionRegistry,
+    DashboardAuth, SessionCoordinator, SessionRegistry,
     api::{ApiState, router},
 };
+use crate::storage::{HistoryStore, SqliteStore};
 use anyhow::{Context, Result};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 use tokio::{net::TcpListener, sync::watch, task::JoinHandle};
@@ -17,6 +22,10 @@ pub struct ServiceConfig {
     pub token: SecretString,
     pub discovery_file: Option<PathBuf>,
     pub lock_file: Option<PathBuf>,
+    pub database_file: Option<PathBuf>,
+    pub dashboard_launch_ttl: Duration,
+    pub history_retention: Duration,
+    pub history_cleanup_interval: Duration,
     pub idle_timeout: Duration,
 }
 
@@ -26,6 +35,10 @@ impl ServiceConfig {
             token,
             discovery_file: None,
             lock_file: None,
+            database_file: None,
+            dashboard_launch_ttl: Duration::from_secs(60),
+            history_retention: Duration::from_secs(30 * 24 * 60 * 60),
+            history_cleanup_interval: Duration::from_secs(60 * 60),
             idle_timeout: Duration::from_secs(300),
         }
     }
@@ -78,7 +91,20 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         None
     };
 
-    let registry = SessionRegistry::default();
+    let history = match config.database_file.as_deref() {
+        Some(path) => match SqliteStore::open(path) {
+            Ok(store) => {
+                let _ = store.recover_interrupted();
+                let retention_ms = duration_ms(config.history_retention);
+                let now_ms = unix_time_ms();
+                let _ = store.cleanup_before(now_ms.saturating_sub(retention_ms));
+                HistoryStore::available(store)
+            }
+            Err(error) => HistoryStore::unavailable(error.to_string()),
+        },
+        None => HistoryStore::unavailable("history is not configured"),
+    };
+    let coordinator = SessionCoordinator::new(SessionRegistry::default(), history);
     let discovery_file = config.discovery_file.clone();
     let listener = TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).await?;
     let address = listener.local_addr()?;
@@ -100,19 +126,38 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         std::fs::rename(temp, path)?;
     }
 
+    let dashboard_clients = Arc::new(AtomicUsize::new(0));
     let app = router(ApiState {
-        registry: registry.clone(),
+        coordinator: coordinator.clone(),
         token: config.token,
+        dashboard_auth: DashboardAuth::new(config.dashboard_launch_ttl),
+        base_url: base_url.clone(),
+        dashboard_clients: dashboard_clients.clone(),
     });
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     let idle_timeout = config.idle_timeout;
+    let history_retention = config.history_retention;
+    let history_cleanup_interval = config.history_cleanup_interval;
     let task = tokio::spawn(async move {
         let _service_lock = service_lock;
-        let idle_registry = registry.clone();
+        let cleanup_history = coordinator.history_store();
+        let cleanup_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(history_cleanup_interval);
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                let store = cleanup_history.clone();
+                let cutoff = unix_time_ms().saturating_sub(duration_ms(history_retention));
+                let _ = tokio::task::spawn_blocking(move || store.cleanup_before(cutoff)).await;
+            }
+        });
+        let idle_coordinator = coordinator.clone();
         let idle = async move {
             loop {
                 tokio::time::sleep(idle_timeout.min(Duration::from_millis(250))).await;
-                if idle_registry.idle_for().await >= idle_timeout {
+                if idle_coordinator.idle_for().await >= idle_timeout
+                    && dashboard_clients.load(Ordering::Relaxed) == 0
+                {
                     break;
                 }
             }
@@ -126,6 +171,7 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
                 }
             })
             .await;
+        cleanup_task.abort();
         if let Some(path) = discovery_file {
             let _ = std::fs::remove_file(path);
         }
@@ -138,4 +184,16 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         shutdown_tx,
         task,
     })
+}
+
+fn unix_time_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+        .unwrap_or(0)
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }

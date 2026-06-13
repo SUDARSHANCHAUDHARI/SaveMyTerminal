@@ -12,6 +12,7 @@ fn help_lists_phase_one_commands() {
         .success()
         .stdout(predicate::str::contains("run"))
         .stdout(predicate::str::contains("service"))
+        .stdout(predicate::str::contains("dashboard"))
         .stdout(predicate::str::contains("status"));
 }
 

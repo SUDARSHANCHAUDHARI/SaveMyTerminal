@@ -7,6 +7,7 @@ async fn concurrent_ensure_calls_reuse_one_reachable_endpoint() {
     let paths = AppPaths {
         config_dir: temp.path().join("config"),
         runtime_dir: temp.path().join("runtime"),
+        data_dir: temp.path().join("data"),
     };
     let executable = assert_cmd::cargo::cargo_bin!("smt");
 
@@ -27,6 +28,7 @@ async fn connect_does_not_create_missing_auth_state() {
     let paths = AppPaths {
         config_dir: temp.path().join("config"),
         runtime_dir: temp.path().join("runtime"),
+        data_dir: temp.path().join("data"),
     };
 
     assert!(ServiceClient::connect(&paths).await.is_err());
