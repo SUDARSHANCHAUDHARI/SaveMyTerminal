@@ -168,7 +168,32 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             }
             Ok(0)
         }
-        Command::Doctor(_) => bail!("doctor execution is not available yet"),
+        Command::Doctor(args) => {
+            let paths = resolve_paths(args.paths)?;
+            let report = crate::doctor::run_checks(&paths).await;
+            let mut pass = 0;
+            let mut warn = 0;
+            let mut fail = 0;
+            for check in &report.checks {
+                let label = match check.level {
+                    crate::doctor::CheckLevel::Pass => {
+                        pass += 1;
+                        "PASS"
+                    }
+                    crate::doctor::CheckLevel::Warn => {
+                        warn += 1;
+                        "WARN"
+                    }
+                    crate::doctor::CheckLevel::Fail => {
+                        fail += 1;
+                        "FAIL"
+                    }
+                };
+                println!("{label} {}: {}", check.id, check.message);
+            }
+            println!("summary: {pass} pass, {warn} warn, {fail} fail");
+            Ok(report.exit_code())
+        }
         Command::Uninstall(args) => {
             let paths = resolve_paths(args.paths)?;
             if let Some(id) = args.integrations.first() {

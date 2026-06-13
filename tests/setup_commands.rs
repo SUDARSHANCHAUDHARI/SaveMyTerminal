@@ -217,3 +217,21 @@ fn uninstall_apply_removes_only_explicit_owned_state() {
         .success();
     assert!(!app_paths.database_file().exists());
 }
+
+#[test]
+fn doctor_prints_checks_and_uses_report_exit_status() {
+    let temp = tempfile::tempdir().unwrap();
+    phase_command(&temp, "doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASS settings"))
+        .stdout(predicate::str::contains("PASS service"))
+        .stdout(predicate::str::contains("summary:"));
+
+    std::fs::create_dir_all(paths(&temp).config_dir).unwrap();
+    std::fs::write(paths(&temp).settings_file(), "invalid = true\n").unwrap();
+    phase_command(&temp, "doctor")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("FAIL settings"));
+}
