@@ -105,6 +105,15 @@ pub enum DashboardPort {
     Fixed(u16),
 }
 
+impl DashboardPort {
+    pub fn socket_port(&self) -> Option<u16> {
+        match self {
+            Self::Auto => None,
+            Self::Fixed(port) => Some(*port),
+        }
+    }
+}
+
 impl Serialize for DashboardPort {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

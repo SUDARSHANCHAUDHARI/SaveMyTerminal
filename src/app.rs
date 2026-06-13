@@ -29,8 +29,32 @@ pub async fn run() -> Result<i32> {
 async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
     match Cli::parse().command {
         Command::Run(args) => {
-            let mut renderer = crate::renderer::PlainRenderer::stderr(!args.no_status);
-            crate::runner::run(args.command, &mut renderer).await
+            let discovered = crate::paths::AppPaths::discover()?;
+            let paths = crate::paths::AppPaths {
+                config_dir: args.config_dir.unwrap_or(discovered.config_dir),
+                runtime_dir: discovered.runtime_dir,
+                data_dir: discovered.data_dir,
+            };
+            let settings = match crate::config::load(&paths.settings_file()) {
+                Ok(settings) => settings,
+                Err(error) => {
+                    eprintln!("smt warning: settings unavailable: {error}");
+                    crate::config::Settings::default()
+                }
+            };
+            let mut renderer = crate::renderer::PlainRenderer::stderr(
+                !args.no_status && settings.presentation.status_enabled,
+            );
+            crate::runner::run_with_options(
+                args.command,
+                &mut renderer,
+                crate::runner::RunOptions {
+                    paths,
+                    cpu_diagnostics: settings.diagnostics.cpu,
+                    memory_diagnostics: settings.diagnostics.memory,
+                },
+            )
+            .await
         }
         Command::Service(args) => {
             let discovered = crate::paths::AppPaths::discover()?;
@@ -39,16 +63,21 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                 runtime_dir: args.runtime_dir.unwrap_or(discovered.runtime_dir),
                 data_dir: args.data_dir.unwrap_or(discovered.data_dir),
             };
+            let settings = crate::config::load(&paths.settings_file())?;
             let token = crate::auth::load_or_create_token(&paths.token_file())?;
             let service = crate::service::spawn_service(crate::service::ServiceConfig {
                 token,
                 discovery_file: Some(paths.discovery_file()),
                 lock_file: Some(paths.runtime_dir.join("service.lock")),
-                database_file: Some(paths.database_file()),
+                database_file: settings.history.enabled.then(|| paths.database_file()),
                 dashboard_launch_ttl: std::time::Duration::from_secs(60),
-                history_retention: std::time::Duration::from_secs(30 * 24 * 60 * 60),
+                history_retention: settings.history_retention(),
                 history_cleanup_interval: std::time::Duration::from_secs(60 * 60),
-                idle_timeout: std::time::Duration::from_millis(args.idle_timeout_ms),
+                idle_timeout: args
+                    .idle_timeout_ms
+                    .map(std::time::Duration::from_millis)
+                    .unwrap_or_else(|| settings.idle_timeout()),
+                listen_port: settings.service.dashboard_port.socket_port(),
             })
             .await?;
             service.finished().await?;

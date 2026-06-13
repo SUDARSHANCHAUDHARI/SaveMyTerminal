@@ -271,3 +271,9 @@ fn reset_key_restores_one_value_or_all_defaults() {
     reset_key(&mut settings, None).unwrap();
     assert_eq!(settings, Settings::default());
 }
+
+#[test]
+fn dashboard_port_resolves_auto_and_fixed_socket_ports() {
+    assert_eq!(DashboardPort::Auto.socket_port(), None);
+    assert_eq!(DashboardPort::Fixed(43123).socket_port(), Some(43123));
+}

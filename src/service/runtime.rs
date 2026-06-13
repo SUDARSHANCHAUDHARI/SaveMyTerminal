@@ -27,6 +27,7 @@ pub struct ServiceConfig {
     pub history_retention: Duration,
     pub history_cleanup_interval: Duration,
     pub idle_timeout: Duration,
+    pub listen_port: Option<u16>,
 }
 
 impl ServiceConfig {
@@ -40,6 +41,7 @@ impl ServiceConfig {
             history_retention: Duration::from_secs(30 * 24 * 60 * 60),
             history_cleanup_interval: Duration::from_secs(60 * 60),
             idle_timeout: Duration::from_secs(300),
+            listen_port: None,
         }
     }
 }
@@ -106,7 +108,11 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
     };
     let coordinator = SessionCoordinator::new(SessionRegistry::default(), history);
     let discovery_file = config.discovery_file.clone();
-    let listener = TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).await?;
+    let listener = TcpListener::bind(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        config.listen_port.unwrap_or(0),
+    ))
+    .await?;
     let address = listener.local_addr()?;
     let base_url = format!("http://{address}");
 

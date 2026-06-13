@@ -33,6 +33,9 @@ pub struct RunArgs {
     /// Disable concise SaveMyTerminal status messages.
     #[arg(long)]
     pub no_status: bool,
+    /// Override the config directory. Intended for tests.
+    #[arg(long, hide = true)]
+    pub config_dir: Option<PathBuf>,
     /// Command and arguments to execute.
     #[arg(
         required = true,
@@ -55,8 +58,8 @@ pub struct ServiceArgs {
     #[arg(long, hide = true)]
     pub data_dir: Option<PathBuf>,
     /// Override idle shutdown. Intended for tests.
-    #[arg(long, default_value_t = 300_000, hide = true)]
-    pub idle_timeout_ms: u64,
+    #[arg(long, hide = true)]
+    pub idle_timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Args, Default)]
