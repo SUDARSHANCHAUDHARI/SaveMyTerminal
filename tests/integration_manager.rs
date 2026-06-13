@@ -82,6 +82,69 @@ fn every_agent_descriptor_uses_the_documented_user_file_and_events() {
 }
 
 #[test]
+fn codex_descriptor_honors_the_configured_codex_home() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let codex_home = temp.path().join("codex-personal");
+    let descriptors = savemyterminal::agents::descriptors_with_codex_home(&home, Some(&codex_home));
+
+    let codex = descriptors
+        .iter()
+        .find(|descriptor| descriptor.id == "codex")
+        .unwrap();
+    assert_eq!(codex.target, codex_home.join("hooks.json"));
+
+    let claude = descriptors
+        .iter()
+        .find(|descriptor| descriptor.id == "claude")
+        .unwrap();
+    assert_eq!(claude.target, home.join(".claude/settings.json"));
+}
+
+#[test]
+fn codex_hooks_omit_the_matcher_for_cross_version_compatibility() {
+    let temp = tempfile::tempdir().unwrap();
+    let descriptor = savemyterminal::agents::descriptors(temp.path())
+        .into_iter()
+        .find(|descriptor| descriptor.id == "codex")
+        .unwrap();
+
+    let plan = plan_json_install(&descriptor).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&plan.preview).unwrap();
+    for groups in value["hooks"].as_object().unwrap().values() {
+        let group = groups.as_array().unwrap().first().unwrap();
+        assert!(group.get("matcher").is_none());
+    }
+}
+
+#[test]
+fn codex_install_migrates_owned_wildcard_groups_without_touching_user_hooks() {
+    let temp = tempfile::tempdir().unwrap();
+    let descriptor = savemyterminal::agents::descriptors(temp.path())
+        .into_iter()
+        .find(|descriptor| descriptor.id == "codex")
+        .unwrap();
+    std::fs::create_dir_all(descriptor.target.parent().unwrap()).unwrap();
+    std::fs::write(
+        &descriptor.target,
+        r#"{"hooks":{"Stop":[{"matcher":"Bash","hooks":[{"type":"command","command":"user-hook"}]},{"matcher":"*","hooks":[{"type":"command","command":"smt hook codex","timeout":5}]}]}}"#,
+    )
+    .unwrap();
+
+    let plan = plan_json_install(&descriptor).unwrap();
+    assert_eq!(plan.action, PlanAction::Update);
+    let value: serde_json::Value = serde_json::from_str(&plan.preview).unwrap();
+    let stop = value["hooks"]["Stop"].as_array().unwrap();
+    assert_eq!(stop[0]["matcher"], "Bash");
+    assert_eq!(stop[0]["hooks"][0]["command"], "user-hook");
+    let owned = stop
+        .iter()
+        .find(|group| group["hooks"][0]["command"] == "smt hook codex")
+        .unwrap();
+    assert!(owned.get("matcher").is_none());
+}
+
+#[test]
 fn managed_block_insertion_and_replacement_preserve_unrelated_bytes() {
     let original = "user-before\nuser-after\n";
     let inserted = insert_or_replace(original, &marker(), "managed line").unwrap();

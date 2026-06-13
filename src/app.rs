@@ -177,8 +177,10 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             println!("detected shell: {:?}", report.shell);
             println!("detected agents: {:?}", report.agents);
             println!("detected terminals: {:?}", report.terminals);
+            let codex_home = codex_home_for_setup(args.home_dir.is_some());
             let home = resolve_home(args.home_dir)?;
-            let agent_descriptors = crate::agents::descriptors(&home);
+            let agent_descriptors =
+                crate::agents::descriptors_with_codex_home(&home, codex_home.as_deref());
             let terminal_descriptors = crate::terminals::descriptors(&home, &paths, report.os);
             let defaults = detected_integration_ids(&report);
             let available = agent_descriptors
@@ -298,10 +300,12 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
         }
         Command::Uninstall(args) => {
             let paths = resolve_paths(args.paths)?;
+            let codex_home = codex_home_for_setup(args.home_dir.is_some());
             let home = resolve_home(args.home_dir)?;
             let manifest = crate::manifest::load_manifest(&paths.manifest_file())?;
             let report = crate::detection::detect();
-            let agent_descriptors = crate::agents::descriptors(&home);
+            let agent_descriptors =
+                crate::agents::descriptors_with_codex_home(&home, codex_home.as_deref());
             let terminal_descriptors = crate::terminals::descriptors(&home, &paths, report.os);
             let defaults = manifest
                 .integrations
@@ -457,6 +461,14 @@ fn terminal_supported(id: &str, os: crate::detection::OsId) -> bool {
         "iterm2" => os == crate::detection::OsId::Macos,
         _ => false,
     }
+}
+
+fn codex_home_for_setup(home_overridden: bool) -> Option<std::path::PathBuf> {
+    (!home_overridden)
+        .then(|| std::env::var_os("CODEX_HOME"))
+        .flatten()
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
 }
 
 fn is_renderer_id(id: &str) -> bool {
