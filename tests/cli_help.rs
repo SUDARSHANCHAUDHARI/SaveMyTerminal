@@ -4,7 +4,7 @@ use predicates::prelude::*;
 use savemyterminal::cli::{Cli, Command as CliCommand};
 
 #[test]
-fn help_lists_phase_one_commands() {
+fn help_lists_available_commands() {
     Command::cargo_bin("smt")
         .unwrap()
         .arg("--help")
@@ -13,7 +13,11 @@ fn help_lists_phase_one_commands() {
         .stdout(predicate::str::contains("run"))
         .stdout(predicate::str::contains("service"))
         .stdout(predicate::str::contains("dashboard"))
-        .stdout(predicate::str::contains("status"));
+        .stdout(predicate::str::contains("status"))
+        .stdout(predicate::str::contains("setup"))
+        .stdout(predicate::str::contains("config"))
+        .stdout(predicate::str::contains("doctor"))
+        .stdout(predicate::str::contains("uninstall"));
 }
 
 #[test]

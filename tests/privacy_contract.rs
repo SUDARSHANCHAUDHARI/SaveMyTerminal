@@ -2,7 +2,13 @@ use savemyterminal::protocol::{
     Event, EventKind, FailureCategory, Metric, MetricQuality, MetricSource, PROTOCOL_VERSION,
     SessionSnapshot, SessionState, ToolCategory,
 };
+use savemyterminal::{
+    config::{Settings, load, normalized_toml, set_key},
+    detection::{AgentId, EnvironmentReport, OsId, ShellId, TerminalId},
+    manifest::{IntegrationManifest, IntegrationRecord},
+};
 use serde_json::Value;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 #[test]
@@ -205,4 +211,76 @@ fn rejects_non_finite_cpu_percent_metrics() {
             "cpu percent metric must be finite"
         );
     }
+}
+
+#[test]
+fn settings_and_manifest_schemas_contain_only_approved_metadata_fields() {
+    let settings = normalized_toml(&Settings::default())
+        .unwrap()
+        .to_ascii_lowercase();
+    let manifest = serde_json::to_string(&IntegrationManifest {
+        version: 1,
+        integrations: vec![IntegrationRecord {
+            id: "example".to_owned(),
+            descriptor_version: 1,
+            target_path: PathBuf::from("managed-target"),
+            marker_id: "example".to_owned(),
+            backup_path: Some(PathBuf::from("managed-backup")),
+            post_write_sha256: "aa".repeat(32),
+            applied_at_unix_ms: 1,
+        }],
+    })
+    .unwrap()
+    .to_ascii_lowercase();
+
+    for prohibited in [
+        "prompt",
+        "response",
+        "terminal_output",
+        "command_argument",
+        "working_directory",
+        "file_contents",
+        "environment_value",
+        "username",
+        "hostname",
+        "repository_remote",
+        "credential",
+    ] {
+        assert!(!settings.contains(prohibited));
+        assert!(!manifest.contains(prohibited));
+    }
+}
+
+#[test]
+fn detection_serialization_is_limited_to_closed_identifiers() {
+    let encoded = serde_json::to_value(EnvironmentReport {
+        os: OsId::Macos,
+        shell: Some(ShellId::Zsh),
+        agents: vec![AgentId::Codex],
+        terminals: vec![TerminalId::Ghostty],
+    })
+    .unwrap();
+    let object = encoded.as_object().unwrap();
+    let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
+    keys.sort_unstable();
+    assert_eq!(keys, ["agents", "os", "shell", "terminals"]);
+}
+
+#[test]
+fn configuration_errors_do_not_echo_arbitrary_file_or_identifier_content() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("settings.toml");
+    let secret = "sensitive/value-must-not-be-reflected";
+    std::fs::write(&path, format!("unknown = {secret:?}\n")).unwrap();
+
+    let parse_error = load(&path).unwrap_err().to_string();
+    assert!(!parse_error.contains(secret));
+    assert!(parse_error.contains(path.to_str().unwrap()));
+
+    let mut settings = Settings::default();
+    let validation_error = set_key(&mut settings, "integrations.agents", secret)
+        .unwrap_err()
+        .to_string();
+    assert!(!validation_error.contains(secret));
+    assert!(validation_error.contains("integrations.agents"));
 }

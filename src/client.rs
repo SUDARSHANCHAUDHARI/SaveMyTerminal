@@ -24,7 +24,7 @@ pub struct ServiceClient {
 impl ServiceClient {
     pub async fn ensure(paths: &AppPaths) -> Result<Self> {
         let executable = std::env::current_exe()?;
-        Self::ensure_with_executable(paths, &executable, Duration::from_secs(300)).await
+        Self::ensure_with_executable_inner(paths, &executable, None).await
     }
 
     pub async fn connect(paths: &AppPaths) -> Result<Self> {
@@ -36,6 +36,14 @@ impl ServiceClient {
         paths: &AppPaths,
         executable: &Path,
         idle_timeout: Duration,
+    ) -> Result<Self> {
+        Self::ensure_with_executable_inner(paths, executable, Some(idle_timeout)).await
+    }
+
+    async fn ensure_with_executable_inner(
+        paths: &AppPaths,
+        executable: &Path,
+        idle_timeout: Option<Duration>,
     ) -> Result<Self> {
         let token = load_or_create_token(&paths.token_file())?;
         if let Ok(client) = Self::from_discovery(paths, token.clone()).await {
@@ -52,12 +60,15 @@ impl ServiceClient {
             .arg(&paths.runtime_dir)
             .arg("--data-dir")
             .arg(&paths.data_dir)
-            .arg("--idle-timeout-ms")
-            .arg(idle_timeout.as_millis().to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .kill_on_drop(false);
+        if let Some(idle_timeout) = idle_timeout {
+            command
+                .arg("--idle-timeout-ms")
+                .arg(idle_timeout.as_millis().to_string());
+        }
         platform_detach(&mut command);
         command.spawn().context("failed to start local service")?;
 

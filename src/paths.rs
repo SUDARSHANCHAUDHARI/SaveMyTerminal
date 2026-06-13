@@ -31,4 +31,16 @@ impl AppPaths {
     pub fn database_file(&self) -> PathBuf {
         self.data_dir.join("sessions.sqlite3")
     }
+
+    pub fn settings_file(&self) -> PathBuf {
+        self.config_dir.join("settings.toml")
+    }
+
+    pub fn manifest_file(&self) -> PathBuf {
+        self.config_dir.join("integrations.json")
+    }
+
+    pub fn backup_dir(&self) -> PathBuf {
+        self.data_dir.join("backups")
+    }
 }

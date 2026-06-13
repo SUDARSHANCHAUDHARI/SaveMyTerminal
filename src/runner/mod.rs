@@ -10,7 +10,31 @@ use crate::{
 use anyhow::Result;
 use uuid::Uuid;
 
+pub struct RunOptions {
+    pub paths: AppPaths,
+    pub cpu_diagnostics: bool,
+    pub memory_diagnostics: bool,
+}
+
 pub async fn run(command: Vec<String>, renderer: &mut dyn Renderer) -> Result<i32> {
+    let paths = AppPaths::discover()?;
+    run_with_options(
+        command,
+        renderer,
+        RunOptions {
+            paths,
+            cpu_diagnostics: true,
+            memory_diagnostics: true,
+        },
+    )
+    .await
+}
+
+pub async fn run_with_options(
+    command: Vec<String>,
+    renderer: &mut dyn Renderer,
+    options: RunOptions,
+) -> Result<i32> {
     let agent_id = command
         .first()
         .map(|program| identify_agent(program))
@@ -21,14 +45,8 @@ pub async fn run(command: Vec<String>, renderer: &mut dyn Renderer) -> Result<i3
     let client = if std::env::var_os("SMT_TEST_FORCE_SERVICE_FAILURE").is_some() {
         None
     } else {
-        match AppPaths::discover() {
-            Ok(paths) => match ServiceClient::ensure(&paths).await {
-                Ok(client) => Some(client),
-                Err(error) => {
-                    renderer.warning(&format!("observability unavailable: {error}"));
-                    None
-                }
-            },
+        match ServiceClient::ensure(&options.paths).await {
+            Ok(client) => Some(client),
             Err(error) => {
                 renderer.warning(&format!("observability unavailable: {error}"));
                 None
@@ -50,7 +68,10 @@ pub async fn run(command: Vec<String>, renderer: &mut dyn Renderer) -> Result<i3
 
     let mut child = child::spawn_inherited(&command)?;
     let pid = child.id().unwrap_or_default();
-    let status = if let Some(client) = &client {
+    let diagnostics_enabled = options.cpu_diagnostics || options.memory_diagnostics;
+    let status = if let Some(client) = &client
+        && diagnostics_enabled
+    {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
         loop {
             tokio::select! {
@@ -62,8 +83,8 @@ pub async fn run(command: Vec<String>, renderer: &mut dyn Renderer) -> Result<i3
                         "generic",
                         &agent_id,
                         EventKind::Metrics {
-                            cpu_percent: metrics.cpu_percent,
-                            memory_bytes: metrics.memory_bytes,
+                            cpu_percent: options.cpu_diagnostics.then_some(metrics.cpu_percent).flatten(),
+                            memory_bytes: options.memory_diagnostics.then_some(metrics.memory_bytes).flatten(),
                         },
                     )).await;
                 }

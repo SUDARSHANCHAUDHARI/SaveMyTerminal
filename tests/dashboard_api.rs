@@ -7,6 +7,20 @@ use savemyterminal::{
 use secrecy::SecretString;
 use serde::Deserialize;
 use std::time::Duration;
+
+#[tokio::test]
+async fn fixed_dashboard_port_binds_the_requested_loopback_port() {
+    let reservation = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let port = reservation.local_addr().unwrap().port();
+    drop(reservation);
+
+    let mut config = ServiceConfig::for_test(SecretString::from("secret".to_owned()));
+    config.listen_port = Some(port);
+    let service = spawn_test_service(config).await.unwrap();
+
+    assert_eq!(service.base_url, format!("http://127.0.0.1:{port}"));
+    service.shutdown().await;
+}
 use uuid::Uuid;
 
 #[derive(Deserialize)]
