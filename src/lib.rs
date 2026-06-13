@@ -5,6 +5,8 @@ pub mod client;
 pub mod config;
 pub mod dashboard;
 pub mod detection;
+pub mod integration;
+pub mod manifest;
 pub mod paths;
 pub mod protocol;
 pub mod renderer;
