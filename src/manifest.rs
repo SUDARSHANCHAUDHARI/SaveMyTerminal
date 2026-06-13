@@ -109,11 +109,20 @@ fn validate(manifest: &IntegrationManifest) -> Result<(), ManifestError> {
     let mut ids = HashSet::new();
     let mut ownership = HashSet::new();
     for record in &manifest.integrations {
+        if !valid_identifier(&record.id) || !valid_identifier(&record.marker_id) {
+            return Err(ManifestError::Invalid(
+                "integration and marker identifiers must use lowercase ASCII names".to_owned(),
+            ));
+        }
+        if record.descriptor_version == 0 {
+            return Err(ManifestError::Invalid(
+                "descriptor versions must be positive".to_owned(),
+            ));
+        }
         if !ids.insert(&record.id) {
-            return Err(ManifestError::Invalid(format!(
-                "duplicate integration id {:?}",
-                record.id
-            )));
+            return Err(ManifestError::Invalid(
+                "duplicate integration identifier".to_owned(),
+            ));
         }
         if !ownership.insert((&record.target_path, &record.marker_id)) {
             return Err(ManifestError::Invalid(
@@ -133,6 +142,13 @@ fn validate(manifest: &IntegrationManifest) -> Result<(), ManifestError> {
         }
     }
     Ok(())
+}
+
+fn valid_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_-".contains(&byte))
 }
 
 fn write_atomic(path: &Path, content: &[u8]) -> Result<(), ManifestError> {

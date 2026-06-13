@@ -180,6 +180,11 @@ fn uninstall_preview_preserves_owned_config_and_history() {
     let app_paths = paths(&temp);
     config::save_atomic(&app_paths.settings_file(), &config::Settings::default()).unwrap();
     std::fs::write(app_paths.token_file(), "secret").unwrap();
+    savemyterminal::manifest::save_manifest_atomic(
+        &app_paths.manifest_file(),
+        &savemyterminal::manifest::IntegrationManifest::default(),
+    )
+    .unwrap();
     std::fs::create_dir_all(&app_paths.data_dir).unwrap();
     std::fs::write(app_paths.database_file(), "history").unwrap();
 
@@ -209,6 +214,7 @@ fn uninstall_apply_removes_only_explicit_owned_state() {
         .success();
     assert!(!app_paths.settings_file().exists());
     assert!(!app_paths.token_file().exists());
+    assert!(!app_paths.manifest_file().exists());
     assert!(app_paths.database_file().exists());
 
     phase_command(&temp, "uninstall")

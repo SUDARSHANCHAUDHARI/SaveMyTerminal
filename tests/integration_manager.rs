@@ -124,6 +124,20 @@ fn manifest_rejects_unknown_fields_duplicate_ids_and_newer_versions() {
         ],
     };
     assert!(save_manifest_atomic(&path, &duplicate).is_err());
+
+    let unsafe_identifier = IntegrationManifest {
+        version: 1,
+        integrations: vec![IntegrationRecord {
+            id: "unsafe\nidentifier".to_owned(),
+            descriptor_version: 1,
+            target_path: PathBuf::from("/tmp/tool.conf"),
+            marker_id: "unsafe\nidentifier".to_owned(),
+            backup_path: None,
+            post_write_sha256: "dd".repeat(32),
+            applied_at_unix_ms: 1,
+        }],
+    };
+    assert!(save_manifest_atomic(&path, &unsafe_identifier).is_err());
 }
 
 struct ContentValidator {
@@ -278,5 +292,33 @@ fn uninstall_plan_removes_only_managed_content_and_manifest_record() {
             .unwrap()
             .integrations
             .is_empty()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn apply_and_uninstall_preserve_existing_target_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("tool.conf");
+    let manifest_path = temp.path().join("integrations.json");
+    let backup_dir = temp.path().join("backups");
+    std::fs::write(&target, "user-content\n").unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let descriptor = descriptor(target.clone(), "managed line", None);
+
+    let install = plan_install(&descriptor).unwrap();
+    apply_plan(&install, &descriptor, &manifest_path, &backup_dir).unwrap();
+    assert_eq!(
+        std::fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+
+    let uninstall = plan_uninstall(&descriptor).unwrap();
+    apply_uninstall(&uninstall, &descriptor, &manifest_path, &backup_dir).unwrap();
+    assert_eq!(
+        std::fs::metadata(target).unwrap().permissions().mode() & 0o777,
+        0o644
     );
 }

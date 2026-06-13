@@ -210,11 +210,19 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                 return Ok(0);
             }
 
+            if args.remove_config {
+                let manifest = crate::manifest::load_manifest(&paths.manifest_file())?;
+                if !manifest.integrations.is_empty() {
+                    bail!("managed integrations must be removed before configuration state");
+                }
+            }
+
             remove_if_exists(&paths.discovery_file())?;
             remove_if_exists(&paths.runtime_dir.join("service.lock"))?;
             if args.remove_config {
                 remove_if_exists(&paths.settings_file())?;
                 remove_if_exists(&paths.token_file())?;
+                remove_if_exists(&paths.manifest_file())?;
                 remove_empty_dir(&paths.config_dir)?;
             }
             if args.purge_data {

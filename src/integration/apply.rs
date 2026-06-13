@@ -171,6 +171,9 @@ fn rollback(target: &Path, original: Option<&[u8]>) -> Result<(), ApplyError> {
 
 fn write_atomic(path: &Path, content: &[u8]) -> Result<(), ApplyError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let existing_permissions = std::fs::metadata(path)
+        .ok()
+        .map(|metadata| metadata.permissions());
     std::fs::create_dir_all(parent).map_err(|source| ApplyError::Write {
         path: parent.to_path_buf(),
         source,
@@ -194,6 +197,12 @@ fn write_atomic(path: &Path, content: &[u8]) -> Result<(), ApplyError> {
                 path: temp.clone(),
                 source,
             })?;
+        if let Some(permissions) = existing_permissions {
+            std::fs::set_permissions(&temp, permissions).map_err(|source| ApplyError::Write {
+                path: temp.clone(),
+                source,
+            })?;
+        }
         std::fs::rename(&temp, path).map_err(|source| ApplyError::Write {
             path: path.to_path_buf(),
             source,

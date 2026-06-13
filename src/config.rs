@@ -242,7 +242,7 @@ pub enum ConfigError {
         path: PathBuf,
         source: std::io::Error,
     },
-    #[error("could not parse settings at {path}: {source}")]
+    #[error("could not parse settings at {path}")]
     Parse {
         path: PathBuf,
         source: toml::de::Error,
@@ -506,13 +506,13 @@ fn validate_identifiers(key: &'static str, identifiers: &[String]) -> Result<(),
         {
             return Err(ConfigError::InvalidValue {
                 key,
-                reason: format!("invalid integration identifier {identifier:?}"),
+                reason: "contains an invalid integration identifier".to_owned(),
             });
         }
         if !seen.insert(identifier) {
             return Err(ConfigError::InvalidValue {
                 key,
-                reason: format!("duplicate integration identifier {identifier:?}"),
+                reason: "contains a duplicate integration identifier".to_owned(),
             });
         }
     }
