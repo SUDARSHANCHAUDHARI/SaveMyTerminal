@@ -41,6 +41,9 @@ pub struct ServiceArgs {
     /// Override the runtime directory. Intended for tests.
     #[arg(long, hide = true)]
     pub runtime_dir: Option<PathBuf>,
+    /// Override the data directory. Intended for tests.
+    #[arg(long, hide = true)]
+    pub data_dir: Option<PathBuf>,
     /// Override idle shutdown. Intended for tests.
     #[arg(long, default_value_t = 300_000, hide = true)]
     pub idle_timeout_ms: u64,

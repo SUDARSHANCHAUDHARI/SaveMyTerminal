@@ -1,7 +1,8 @@
 use crate::service::{
-    SessionRegistry,
+    SessionCoordinator, SessionRegistry,
     api::{ApiState, router},
 };
+use crate::storage::{HistoryStore, SqliteStore};
 use anyhow::{Context, Result};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,7 @@ pub struct ServiceConfig {
     pub token: SecretString,
     pub discovery_file: Option<PathBuf>,
     pub lock_file: Option<PathBuf>,
+    pub database_file: Option<PathBuf>,
     pub idle_timeout: Duration,
 }
 
@@ -26,6 +28,7 @@ impl ServiceConfig {
             token,
             discovery_file: None,
             lock_file: None,
+            database_file: None,
             idle_timeout: Duration::from_secs(300),
         }
     }
@@ -78,7 +81,23 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         None
     };
 
-    let registry = SessionRegistry::default();
+    let history = match config.database_file.as_deref() {
+        Some(path) => match SqliteStore::open(path) {
+            Ok(store) => {
+                let _ = store.recover_interrupted();
+                let retention_ms = Duration::from_secs(30 * 24 * 60 * 60).as_millis() as u64;
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|duration| duration.as_millis() as u64)
+                    .unwrap_or(0);
+                let _ = store.cleanup_before(now_ms.saturating_sub(retention_ms));
+                HistoryStore::available(store)
+            }
+            Err(error) => HistoryStore::unavailable(error.to_string()),
+        },
+        None => HistoryStore::unavailable("history is not configured"),
+    };
+    let coordinator = SessionCoordinator::new(SessionRegistry::default(), history);
     let discovery_file = config.discovery_file.clone();
     let listener = TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).await?;
     let address = listener.local_addr()?;
@@ -101,18 +120,18 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
     }
 
     let app = router(ApiState {
-        registry: registry.clone(),
+        coordinator: coordinator.clone(),
         token: config.token,
     });
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     let idle_timeout = config.idle_timeout;
     let task = tokio::spawn(async move {
         let _service_lock = service_lock;
-        let idle_registry = registry.clone();
+        let idle_coordinator = coordinator.clone();
         let idle = async move {
             loop {
                 tokio::time::sleep(idle_timeout.min(Duration::from_millis(250))).await;
-                if idle_registry.idle_for().await >= idle_timeout {
+                if idle_coordinator.idle_for().await >= idle_timeout {
                     break;
                 }
             }

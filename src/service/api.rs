@@ -1,4 +1,4 @@
-use crate::{protocol::Event, service::SessionRegistry};
+use crate::{protocol::Event, service::SessionCoordinator};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Request, State},
@@ -12,7 +12,7 @@ use subtle::ConstantTimeEq;
 
 #[derive(Clone)]
 pub struct ApiState {
-    pub registry: SessionRegistry,
+    pub coordinator: SessionCoordinator,
     pub token: SecretString,
 }
 
@@ -52,7 +52,7 @@ async fn post_event(
     Json(event): Json<Event>,
 ) -> Result<Json<crate::protocol::SessionSnapshot>, (StatusCode, String)> {
     state
-        .registry
+        .coordinator
         .apply(event)
         .await
         .map(Json)

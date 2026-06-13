@@ -45,6 +45,8 @@ impl ServiceClient {
             .arg(&paths.config_dir)
             .arg("--runtime-dir")
             .arg(&paths.runtime_dir)
+            .arg("--data-dir")
+            .arg(&paths.data_dir)
             .arg("--idle-timeout-ms")
             .arg(idle_timeout.as_millis().to_string())
             .stdin(Stdio::null())

@@ -95,6 +95,19 @@ impl SessionRegistry {
             .count()
     }
 
+    pub async fn active_sessions(&self) -> Vec<SessionSnapshot> {
+        let mut sessions: Vec<_> = self
+            .sessions
+            .read()
+            .await
+            .values()
+            .filter(|session| !session.state.is_terminal())
+            .cloned()
+            .collect();
+        sessions.sort_by_key(|session| (session.started_at_ms, session.session_id));
+        sessions
+    }
+
     pub async fn idle_for(&self) -> Duration {
         self.last_activity.read().await.elapsed()
     }
