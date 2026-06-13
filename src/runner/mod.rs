@@ -1,4 +1,5 @@
 mod child;
+mod metrics;
 
 use crate::{
     client::ServiceClient,
@@ -47,7 +48,30 @@ pub async fn run(command: Vec<String>, renderer: &mut dyn Renderer) -> Result<i3
             .await;
     }
 
-    let status = child::run_inherited(&command).await?;
+    let mut child = child::spawn_inherited(&command)?;
+    let pid = child.id().unwrap_or_default();
+    let status = if let Some(client) = &client {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+        loop {
+            tokio::select! {
+                status = child.wait() => break status?,
+                _ = interval.tick() => {
+                    let metrics = metrics::sample_once(pid).await;
+                    let _ = client.send(&Event::new(
+                        session_id,
+                        "generic",
+                        &agent_id,
+                        EventKind::Metrics {
+                            cpu_percent: metrics.cpu_percent,
+                            memory_bytes: metrics.memory_bytes,
+                        },
+                    )).await;
+                }
+            }
+        }
+    } else {
+        child.wait().await?
+    };
     let code = child::exit_code(status);
     let kind = if code == 0 {
         EventKind::Completed { exit_code: code }

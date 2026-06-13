@@ -2,12 +2,11 @@ use anyhow::{Context, Result};
 use std::{ffi::OsString, process::ExitStatus};
 use tokio::process::Command;
 
-pub async fn run_inherited(command: &[String]) -> Result<ExitStatus> {
+pub fn spawn_inherited(command: &[String]) -> Result<tokio::process::Child> {
     let (program, args) = command.split_first().context("command is required")?;
     Command::new(OsString::from(program))
         .args(args)
-        .status()
-        .await
+        .spawn()
         .with_context(|| format!("failed to launch {program}"))
 }
 
