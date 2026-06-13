@@ -3,7 +3,10 @@ use clap::Parser;
 
 pub async fn run() -> anyhow::Result<i32> {
     match Cli::parse().command {
-        Command::Run(_) => Ok(0),
+        Command::Run(args) => {
+            let mut renderer = crate::renderer::PlainRenderer::stderr(!args.no_status);
+            crate::runner::run(args.command, &mut renderer).await
+        }
         Command::Service(args) => {
             let discovered = crate::paths::AppPaths::discover()?;
             let paths = crate::paths::AppPaths {

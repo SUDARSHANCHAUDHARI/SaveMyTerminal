@@ -4,4 +4,6 @@ pub mod cli;
 pub mod client;
 pub mod paths;
 pub mod protocol;
+pub mod renderer;
+pub mod runner;
 pub mod service;
