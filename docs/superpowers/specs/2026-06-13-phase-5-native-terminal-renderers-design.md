@@ -78,7 +78,7 @@ Setup installs a generated ambient PNG and adds managed `background_image`, `bac
 
 Compatibility: WezTerm versions supporting Lua `update-right-status` and background layers.
 
-Setup installs a Lua module that periodically runs `smt snapshot --format text`, updates the right status, and adds the generated ambient image as a dim background layer. The user's root config receives one managed `require`/apply block inserted before its final `return config` statement. If no compatible return anchor exists, setup reports a conflict rather than guessing.
+Setup prepends a managed Lua event block that periodically runs `smt snapshot --format text` and updates the right status. The generated ambient image remains available for users who choose to add a background layer, but V1 does not replace or merge an existing `config.background` table because arbitrary Lua is not safely machine-mergeable.
 
 ### iTerm2
 
@@ -97,7 +97,7 @@ assets/savemyterminal-wezterm.lua
 assets/savemyterminal-iterm2.py
 ```
 
-Assets are deterministic, contain no user data, and are replaced only when their descriptor version changes. Terminal config edits use the Phase 3 planner, backups, atomic writes, validation, rollback, and manifest ownership records. Uninstall removes managed config blocks and SaveMyTerminal-owned assets only when no installed renderer still references them.
+Assets are deterministic, contain no user data, and are atomically regenerated during applied renderer setup. Terminal config edits use the Phase 3 planner, backups, atomic writes, validation, rollback, and manifest ownership records. Uninstall removes managed config blocks and SaveMyTerminal-owned assets only when no installed renderer still references them.
 
 ## Setup Selection
 
@@ -118,7 +118,7 @@ With no explicit `--integration`, setup plans detected agents and terminals. Exp
 
 Shared renderer contract tests prove every normalized state is accepted, unavailable diagnostics are irrelevant, terminal state is reset at completion, and write failures are isolated.
 
-Descriptor tests cover official config syntax, deterministic assets, preview/apply/uninstall, unrelated-content preservation, incompatible WezTerm anchors, OS compatibility, and manifest/doctor behavior. Existing agent, wrapper, dashboard, privacy, and setup tests remain green.
+Descriptor tests cover official config syntax, deterministic assets, preview/apply/uninstall, unrelated-content preservation, WezTerm prepend placement, OS compatibility, and manifest/doctor behavior. Existing agent, wrapper, dashboard, privacy, and setup tests remain green.
 
 All checks run locally. Phase 5 adds no GitHub Actions workflows.
 

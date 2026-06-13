@@ -1,6 +1,10 @@
+mod hybrid;
 mod plain;
+mod snapshot;
 
+pub use hybrid::HybridRenderer;
 pub use plain::PlainRenderer;
+pub use snapshot::SnapshotView;
 
 pub trait Renderer: Send {
     fn started(&mut self, agent_id: &str);

@@ -42,8 +42,10 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                     crate::config::Settings::default()
                 }
             };
-            let mut renderer = crate::renderer::PlainRenderer::stderr(
+            let ambient_terminal = !crate::detection::detect().terminals.is_empty();
+            let mut renderer = crate::renderer::HybridRenderer::stderr(
                 !args.no_status && settings.presentation.status_enabled,
+                settings.presentation.ambient_enabled && ambient_terminal,
             );
             crate::runner::run_with_options(
                 args.command,
@@ -103,6 +105,23 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                 }
             }
         }
+        Command::Snapshot(args) => {
+            let paths = resolve_paths(args.paths)?;
+            let settings = crate::config::load(&paths.settings_file()).unwrap_or_default();
+            let sessions = match crate::client::ServiceClient::connect(&paths).await {
+                Ok(client) => client.active_sessions().await.unwrap_or_default(),
+                Err(_) => Vec::new(),
+            };
+            let view = crate::renderer::SnapshotView::from_sessions(
+                &sessions,
+                settings.presentation.ambient_intensity,
+            );
+            match args.format {
+                crate::cli::SnapshotFormat::Text => println!("{}", view.label),
+                crate::cli::SnapshotFormat::Json => println!("{}", serde_json::to_string(&view)?),
+            }
+            Ok(0)
+        }
         Command::Hook(args) => {
             run_native_hook(args.agent).await;
             println!("{{}}");
@@ -159,11 +178,46 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             println!("detected agents: {:?}", report.agents);
             println!("detected terminals: {:?}", report.terminals);
             let home = resolve_home(args.home_dir)?;
-            let descriptors = crate::agents::descriptors(&home);
-            let selected =
-                select_setup_descriptors(descriptors, &args.integrations, &report.agents)?;
-            for descriptor in &selected {
-                let plan = crate::integration::json::plan_install(descriptor)?;
+            let agent_descriptors = crate::agents::descriptors(&home);
+            let terminal_descriptors = crate::terminals::descriptors(&home, &paths, report.os);
+            let defaults = detected_integration_ids(&report);
+            let available = agent_descriptors
+                .iter()
+                .map(|item| item.id.as_str())
+                .chain(terminal_descriptors.iter().filter_map(|item| {
+                    terminal_supported(&item.id, report.os).then_some(item.id.as_str())
+                }))
+                .collect::<Vec<_>>();
+            let selected_ids = select_integration_ids(&args.integrations, &defaults, &available)?;
+            let selected_agents = agent_descriptors
+                .iter()
+                .filter(|item| selected_ids.contains(&item.id.as_str()))
+                .collect::<Vec<_>>();
+            let selected_terminals = terminal_descriptors
+                .iter()
+                .filter(|item| selected_ids.contains(&item.id.as_str()))
+                .collect::<Vec<_>>();
+            let agent_plans = selected_agents
+                .iter()
+                .map(|descriptor| {
+                    crate::integration::json::plan_install(descriptor)
+                        .map(|plan| (*descriptor, plan))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let terminal_plans = selected_terminals
+                .iter()
+                .map(|descriptor| {
+                    crate::integration::plan_install(descriptor).map(|plan| (*descriptor, plan))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if !selected_terminals.is_empty() {
+                println!(
+                    "assets: {} and {}",
+                    crate::terminal_assets::ambient_path(&paths).display(),
+                    crate::terminal_assets::shader_path(&paths).display()
+                );
+            }
+            for (descriptor, plan) in &agent_plans {
                 println!(
                     "integration {}: {:?} {}",
                     descriptor.id,
@@ -171,9 +225,32 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                     descriptor.target.display()
                 );
                 print!("{}", plan.preview);
-                if args.apply {
+            }
+            for (descriptor, plan) in &terminal_plans {
+                println!(
+                    "integration {}: {:?} {}",
+                    descriptor.id,
+                    plan.action,
+                    descriptor.target.display()
+                );
+                print!("{}", plan.preview);
+            }
+            if args.apply {
+                if !terminal_plans.is_empty() {
+                    crate::terminal_assets::install(&paths)?;
+                }
+                for (descriptor, plan) in &agent_plans {
                     crate::integration::apply_json_plan(
-                        &plan,
+                        plan,
+                        descriptor,
+                        &paths.manifest_file(),
+                        &paths.backup_dir(),
+                    )?;
+                    println!("integration applied: {}", descriptor.id);
+                }
+                for (descriptor, plan) in &terminal_plans {
+                    crate::integration::apply_plan(
+                        plan,
                         descriptor,
                         &paths.manifest_file(),
                         &paths.backup_dir(),
@@ -223,13 +300,24 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             let paths = resolve_paths(args.paths)?;
             let home = resolve_home(args.home_dir)?;
             let manifest = crate::manifest::load_manifest(&paths.manifest_file())?;
-            let descriptors = crate::agents::descriptors(&home);
-            let selected = select_uninstall_descriptors(
-                descriptors,
-                &args.integrations,
-                &manifest.integrations,
-            )?;
-            for descriptor in &selected {
+            let report = crate::detection::detect();
+            let agent_descriptors = crate::agents::descriptors(&home);
+            let terminal_descriptors = crate::terminals::descriptors(&home, &paths, report.os);
+            let defaults = manifest
+                .integrations
+                .iter()
+                .map(|record| record.id.as_str())
+                .collect::<Vec<_>>();
+            let available = agent_descriptors
+                .iter()
+                .map(|item| item.id.as_str())
+                .chain(terminal_descriptors.iter().map(|item| item.id.as_str()))
+                .collect::<Vec<_>>();
+            let selected_ids = select_integration_ids(&args.integrations, &defaults, &available)?;
+            for descriptor in agent_descriptors
+                .iter()
+                .filter(|item| selected_ids.contains(&item.id.as_str()))
+            {
                 let plan = crate::integration::json::plan_uninstall(descriptor)?;
                 println!(
                     "integration {}: {:?} {}",
@@ -248,6 +336,28 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                     println!("integration removed: {}", descriptor.id);
                 }
             }
+            for descriptor in terminal_descriptors
+                .iter()
+                .filter(|item| selected_ids.contains(&item.id.as_str()))
+            {
+                let plan = crate::integration::plan_uninstall(descriptor)?;
+                println!(
+                    "integration {}: {:?} {}",
+                    descriptor.id,
+                    plan.action,
+                    descriptor.target.display()
+                );
+                print!("{}", plan.preview);
+                if args.apply {
+                    crate::integration::apply_uninstall(
+                        &plan,
+                        descriptor,
+                        &paths.manifest_file(),
+                        &paths.backup_dir(),
+                    )?;
+                    println!("integration removed: {}", descriptor.id);
+                }
+            }
             if !args.apply {
                 println!("preview: remove SaveMyTerminal-owned state");
                 if args.remove_config {
@@ -257,6 +367,15 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                     println!("preview: purge privacy-safe session history");
                 }
                 return Ok(0);
+            }
+
+            let remaining = crate::manifest::load_manifest(&paths.manifest_file())?;
+            if !remaining
+                .integrations
+                .iter()
+                .any(|record| is_renderer_id(&record.id))
+            {
+                crate::terminal_assets::uninstall(&paths)?;
             }
 
             if args.remove_config {
@@ -292,53 +411,56 @@ fn resolve_home(override_path: Option<std::path::PathBuf>) -> Result<std::path::
         .context("home directory is unavailable")
 }
 
-fn select_setup_descriptors(
-    descriptors: Vec<crate::integration::json::JsonDescriptor>,
-    requested: &[String],
-    detected: &[crate::detection::AgentId],
-) -> Result<Vec<crate::integration::json::JsonDescriptor>> {
-    let detected_ids = detected
-        .iter()
-        .map(|agent| match agent {
-            crate::detection::AgentId::Codex => "codex",
-            crate::detection::AgentId::Claude => "claude",
-            crate::detection::AgentId::Gemini => "gemini",
-        })
-        .collect::<Vec<_>>();
-    select_descriptors(descriptors, requested, &detected_ids)
-}
-
-fn select_uninstall_descriptors(
-    descriptors: Vec<crate::integration::json::JsonDescriptor>,
-    requested: &[String],
-    records: &[crate::manifest::IntegrationRecord],
-) -> Result<Vec<crate::integration::json::JsonDescriptor>> {
-    let recorded_ids = records
-        .iter()
-        .map(|record| record.id.as_str())
-        .collect::<Vec<_>>();
-    select_descriptors(descriptors, requested, &recorded_ids)
-}
-
-fn select_descriptors(
-    descriptors: Vec<crate::integration::json::JsonDescriptor>,
-    requested: &[String],
-    defaults: &[&str],
-) -> Result<Vec<crate::integration::json::JsonDescriptor>> {
+fn select_integration_ids<'a>(
+    requested: &'a [String],
+    defaults: &[&'a str],
+    available: &[&'a str],
+) -> Result<Vec<&'a str>> {
     let selected_ids = if requested.is_empty() {
         defaults.to_vec()
     } else {
         requested.iter().map(String::as_str).collect()
     };
     for id in &selected_ids {
-        if !descriptors.iter().any(|descriptor| descriptor.id == *id) {
-            bail!("integration {id:?} is not registered");
+        if !available.contains(id) {
+            bail!("integration {id:?} is not available on this system");
         }
     }
-    Ok(descriptors
-        .into_iter()
-        .filter(|descriptor| selected_ids.contains(&descriptor.id.as_str()))
-        .collect())
+    Ok(selected_ids)
+}
+
+fn detected_integration_ids(report: &crate::detection::EnvironmentReport) -> Vec<&'static str> {
+    report
+        .agents
+        .iter()
+        .map(|agent| match agent {
+            crate::detection::AgentId::Codex => "codex",
+            crate::detection::AgentId::Claude => "claude",
+            crate::detection::AgentId::Gemini => "gemini",
+        })
+        .chain(report.terminals.iter().map(|terminal| match terminal {
+            crate::detection::TerminalId::Ghostty => "ghostty",
+            crate::detection::TerminalId::Kitty => "kitty",
+            crate::detection::TerminalId::Wezterm => "wezterm",
+            crate::detection::TerminalId::Iterm2 => "iterm2",
+        }))
+        .collect()
+}
+
+fn terminal_supported(id: &str, os: crate::detection::OsId) -> bool {
+    match id {
+        "ghostty" | "kitty" => matches!(
+            os,
+            crate::detection::OsId::Macos | crate::detection::OsId::Linux
+        ),
+        "wezterm" => !matches!(os, crate::detection::OsId::Other),
+        "iterm2" => os == crate::detection::OsId::Macos,
+        _ => false,
+    }
+}
+
+fn is_renderer_id(id: &str) -> bool {
+    matches!(id, "ghostty" | "kitty" | "wezterm" | "iterm2")
 }
 
 async fn run_native_hook(agent: crate::adapter::NativeAgent) {

@@ -38,7 +38,7 @@
 
 1. Add failing compatibility and config fixture tests for all four terminals.
 2. Implement Ghostty and Kitty managed text descriptors.
-3. Implement anchored WezTerm configuration and the iTerm2 AutoLaunch owned script.
+3. Implement prepended WezTerm event configuration and the iTerm2 AutoLaunch owned script.
 4. Connect detection, explicit selection, preview, apply, doctor, and uninstall.
 
 ### Task 5: Verification and publish

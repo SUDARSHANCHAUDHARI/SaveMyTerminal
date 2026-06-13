@@ -16,3 +16,5 @@ pub mod renderer;
 pub mod runner;
 pub mod service;
 pub mod storage;
+pub mod terminal_assets;
+pub mod terminals;
