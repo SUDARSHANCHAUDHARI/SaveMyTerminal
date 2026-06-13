@@ -16,6 +16,19 @@ fn command(temp: &tempfile::TempDir) -> Command {
     command
 }
 
+fn phase_command(temp: &tempfile::TempDir, name: &str) -> Command {
+    let mut command = Command::cargo_bin("smt").unwrap();
+    command.arg(name).args([
+        "--config-dir",
+        temp.path().join("config").to_str().unwrap(),
+        "--runtime-dir",
+        temp.path().join("runtime").to_str().unwrap(),
+        "--data-dir",
+        temp.path().join("data").to_str().unwrap(),
+    ]);
+    command
+}
+
 fn paths(temp: &tempfile::TempDir) -> AppPaths {
     AppPaths {
         config_dir: temp.path().join("config"),
@@ -117,4 +130,90 @@ fn invalid_config_set_leaves_existing_settings_unchanged() {
         .stderr(predicate::str::contains("history.retention_days"));
 
     assert_eq!(std::fs::read(app_paths.settings_file()).unwrap(), before);
+}
+
+#[test]
+fn setup_previews_detection_and_settings_creation_without_mutation() {
+    let temp = tempfile::tempdir().unwrap();
+    let app_paths = paths(&temp);
+
+    phase_command(&temp, "setup")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("detected os:"))
+        .stdout(predicate::str::contains("preview: create settings"));
+
+    assert!(!app_paths.settings_file().exists());
+}
+
+#[test]
+fn setup_apply_creates_valid_default_settings() {
+    let temp = tempfile::tempdir().unwrap();
+    let app_paths = paths(&temp);
+
+    phase_command(&temp, "setup")
+        .arg("--apply")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("settings created"));
+
+    assert_eq!(
+        config::load(&app_paths.settings_file()).unwrap(),
+        config::Settings::default()
+    );
+}
+
+#[test]
+fn setup_rejects_unknown_selected_integrations() {
+    let temp = tempfile::tempdir().unwrap();
+
+    phase_command(&temp, "setup")
+        .args(["--integration", "not-registered"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not-registered"));
+}
+
+#[test]
+fn uninstall_preview_preserves_owned_config_and_history() {
+    let temp = tempfile::tempdir().unwrap();
+    let app_paths = paths(&temp);
+    config::save_atomic(&app_paths.settings_file(), &config::Settings::default()).unwrap();
+    std::fs::write(app_paths.token_file(), "secret").unwrap();
+    std::fs::create_dir_all(&app_paths.data_dir).unwrap();
+    std::fs::write(app_paths.database_file(), "history").unwrap();
+
+    phase_command(&temp, "uninstall")
+        .args(["--remove-config", "--purge-data"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("preview"));
+
+    assert!(app_paths.settings_file().exists());
+    assert!(app_paths.token_file().exists());
+    assert!(app_paths.database_file().exists());
+}
+
+#[test]
+fn uninstall_apply_removes_only_explicit_owned_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let app_paths = paths(&temp);
+    config::save_atomic(&app_paths.settings_file(), &config::Settings::default()).unwrap();
+    std::fs::write(app_paths.token_file(), "secret").unwrap();
+    std::fs::create_dir_all(&app_paths.data_dir).unwrap();
+    std::fs::write(app_paths.database_file(), "history").unwrap();
+
+    phase_command(&temp, "uninstall")
+        .args(["--remove-config", "--apply"])
+        .assert()
+        .success();
+    assert!(!app_paths.settings_file().exists());
+    assert!(!app_paths.token_file().exists());
+    assert!(app_paths.database_file().exists());
+
+    phase_command(&temp, "uninstall")
+        .args(["--purge-data", "--apply"])
+        .assert()
+        .success();
+    assert!(!app_paths.database_file().exists());
 }

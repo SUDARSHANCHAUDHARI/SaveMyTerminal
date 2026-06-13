@@ -104,6 +104,57 @@ pub fn apply_plan(
     Ok(record)
 }
 
+pub fn apply_uninstall(
+    plan: &IntegrationPlan,
+    descriptor: &TextDescriptor,
+    manifest_path: &Path,
+    backup_dir: &Path,
+) -> Result<(), ApplyError> {
+    if plan.id != descriptor.id || plan.target != descriptor.target {
+        return Err(ApplyError::DescriptorMismatch);
+    }
+    let original = std::fs::read(&plan.target).map_err(|source| ApplyError::Read {
+        path: plan.target.clone(),
+        source,
+    })?;
+    if Some(sha256_hex(&original)) != plan.before_sha256 {
+        return Err(ApplyError::StalePlan);
+    }
+
+    std::fs::create_dir_all(backup_dir).map_err(|source| ApplyError::Write {
+        path: backup_dir.to_path_buf(),
+        source,
+    })?;
+    let backup = backup_dir.join(format!(
+        "{}-{}-{}.bak",
+        descriptor.id,
+        now_ms(),
+        &sha256_hex(&original)[..8]
+    ));
+    write_atomic(&backup, &original)?;
+    write_atomic(&plan.target, &plan.proposed)?;
+
+    let validation = descriptor
+        .validator
+        .as_ref()
+        .map(|validator| validator.validate(&plan.target))
+        .transpose();
+    if let Err(message) = validation {
+        write_atomic(&plan.target, &original)?;
+        return Err(ApplyError::Validation(message));
+    }
+
+    let mut manifest = load_manifest(manifest_path)?;
+    manifest
+        .integrations
+        .retain(|record| record.id != descriptor.id);
+    if let Err(error) = save_manifest_atomic(manifest_path, &manifest) {
+        write_atomic(&plan.target, &original)?;
+        return Err(error.into());
+    }
+    Ok(())
+}
+
 fn rollback(target: &Path, original: Option<&[u8]>) -> Result<(), ApplyError> {
     match original {
         Some(bytes) => write_atomic(target, bytes),

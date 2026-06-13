@@ -146,9 +146,58 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             }
             Ok(0)
         }
-        Command::Setup(_) => bail!("setup execution is not available yet"),
+        Command::Setup(args) => {
+            let paths = resolve_paths(args.paths)?;
+            if let Some(id) = args.integrations.first() {
+                bail!("integration {id:?} is not registered in this phase");
+            }
+            let report = crate::detection::detect();
+            println!("detected os: {:?}", report.os);
+            println!("detected shell: {:?}", report.shell);
+            println!("detected agents: {:?}", report.agents);
+            println!("detected terminals: {:?}", report.terminals);
+            let settings_file = paths.settings_file();
+            if settings_file.exists() {
+                crate::config::load(&settings_file)?;
+                println!("settings already configured: {}", settings_file.display());
+            } else if args.apply {
+                crate::config::save_atomic(&settings_file, &crate::config::Settings::default())?;
+                println!("settings created: {}", settings_file.display());
+            } else {
+                println!("preview: create settings at {}", settings_file.display());
+            }
+            Ok(0)
+        }
         Command::Doctor(_) => bail!("doctor execution is not available yet"),
-        Command::Uninstall(_) => bail!("uninstall execution is not available yet"),
+        Command::Uninstall(args) => {
+            let paths = resolve_paths(args.paths)?;
+            if let Some(id) = args.integrations.first() {
+                bail!("integration {id:?} is not registered in this phase");
+            }
+            if !args.apply {
+                println!("preview: remove SaveMyTerminal-owned state");
+                if args.remove_config {
+                    println!("preview: remove settings and authentication token");
+                }
+                if args.purge_data {
+                    println!("preview: purge privacy-safe session history");
+                }
+                return Ok(0);
+            }
+
+            remove_if_exists(&paths.discovery_file())?;
+            remove_if_exists(&paths.runtime_dir.join("service.lock"))?;
+            if args.remove_config {
+                remove_if_exists(&paths.settings_file())?;
+                remove_if_exists(&paths.token_file())?;
+                remove_empty_dir(&paths.config_dir)?;
+            }
+            if args.purge_data {
+                remove_if_exists(&paths.database_file())?;
+            }
+            println!("uninstall applied");
+            Ok(0)
+        }
     }
 }
 
@@ -159,4 +208,27 @@ fn resolve_paths(overrides: PathOverrides) -> Result<crate::paths::AppPaths> {
         runtime_dir: overrides.runtime_dir.unwrap_or(discovered.runtime_dir),
         data_dir: overrides.data_dir.unwrap_or(discovered.data_dir),
     })
+}
+
+fn remove_if_exists(path: &std::path::Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("could not remove {}", path.display())),
+    }
+}
+
+fn remove_empty_dir(path: &std::path::Path) -> Result<()> {
+    match std::fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(error).with_context(|| format!("could not remove {}", path.display())),
+    }
 }

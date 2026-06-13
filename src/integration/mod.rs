@@ -1,9 +1,9 @@
 mod apply;
 pub mod managed;
 
-pub use apply::{ApplyError, apply_plan};
+pub use apply::{ApplyError, apply_plan, apply_uninstall};
 
-use crate::integration::managed::{Marker, insert_or_replace};
+use crate::integration::managed::{Marker, insert_or_replace, remove};
 use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
@@ -109,6 +109,29 @@ pub fn plan_install(descriptor: &TextDescriptor) -> Result<IntegrationPlan, Plan
         target: descriptor.target.clone(),
         action,
         before_sha256: before.as_deref().map(sha256_hex),
+        after_sha256: sha256_hex(&proposed),
+        preview: bounded_preview(&proposed),
+        proposed,
+    })
+}
+
+pub fn plan_uninstall(descriptor: &TextDescriptor) -> Result<IntegrationPlan, PlanError> {
+    let before = std::fs::read(&descriptor.target).map_err(|source| PlanError::Read {
+        path: descriptor.target.clone(),
+        source,
+    })?;
+    let original =
+        std::str::from_utf8(&before).map_err(|_| PlanError::NonUtf8(descriptor.target.clone()))?;
+    let proposed = remove(original, &descriptor.marker)?.into_bytes();
+    Ok(IntegrationPlan {
+        id: descriptor.id.clone(),
+        target: descriptor.target.clone(),
+        action: if before == proposed {
+            PlanAction::NoChange
+        } else {
+            PlanAction::Update
+        },
+        before_sha256: Some(sha256_hex(&before)),
         after_sha256: sha256_hex(&proposed),
         preview: bounded_preview(&proposed),
         proposed,

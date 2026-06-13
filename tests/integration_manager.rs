@@ -1,8 +1,8 @@
 use savemyterminal::{
     integration::{
-        PlanAction, TextDescriptor, Validator, apply_plan,
+        PlanAction, TextDescriptor, Validator, apply_plan, apply_uninstall,
         managed::{BlockState, Marker, insert_or_replace, inspect, remove},
-        plan_install,
+        plan_install, plan_uninstall,
     },
     manifest::{IntegrationManifest, IntegrationRecord, load_manifest, save_manifest_atomic},
 };
@@ -250,4 +250,33 @@ fn validator_failure_rolls_back_target_and_preserves_manifest() {
     );
     assert_eq!(std::fs::read_to_string(target).unwrap(), "original\n");
     assert_eq!(std::fs::read(manifest_path).unwrap(), manifest_before);
+}
+
+#[test]
+fn uninstall_plan_removes_only_managed_content_and_manifest_record() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("tool.conf");
+    let manifest_path = temp.path().join("integrations.json");
+    let backup_dir = temp.path().join("backups");
+    let descriptor = descriptor(target.clone(), "managed line", None);
+    std::fs::write(&target, "user-before\n").unwrap();
+    let install = plan_install(&descriptor).unwrap();
+    apply_plan(&install, &descriptor, &manifest_path, &backup_dir).unwrap();
+
+    let uninstall = plan_uninstall(&descriptor).unwrap();
+    assert_eq!(uninstall.action, PlanAction::Update);
+    assert!(
+        std::fs::read_to_string(&target)
+            .unwrap()
+            .contains("managed line")
+    );
+    apply_uninstall(&uninstall, &descriptor, &manifest_path, &backup_dir).unwrap();
+
+    assert_eq!(std::fs::read_to_string(target).unwrap(), "user-before\n");
+    assert!(
+        load_manifest(&manifest_path)
+            .unwrap()
+            .integrations
+            .is_empty()
+    );
 }
