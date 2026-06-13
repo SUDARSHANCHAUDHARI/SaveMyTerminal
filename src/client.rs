@@ -9,6 +9,11 @@ use secrecy::{ExposeSecret, SecretString};
 use std::{path::Path, process::Stdio, time::Duration};
 use tokio::process::Command;
 
+#[derive(serde::Deserialize)]
+struct DashboardLaunchResponse {
+    launch_url: String,
+}
+
 #[derive(Clone)]
 pub struct ServiceClient {
     client: reqwest::Client,
@@ -102,6 +107,19 @@ impl ServiceClient {
             .await?
             .error_for_status()?;
         Ok(())
+    }
+
+    pub async fn dashboard_launch_url(&self) -> Result<String> {
+        let response = self
+            .client
+            .post(format!("{}/v1/dashboard-launch", self.base_url))
+            .bearer_auth(self.token.expose_secret())
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<DashboardLaunchResponse>()
+            .await?;
+        Ok(response.launch_url)
     }
 }
 

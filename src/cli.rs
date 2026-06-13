@@ -14,6 +14,8 @@ pub enum Command {
     Run(RunArgs),
     /// Run the local metadata service. Normally started automatically.
     Service(ServiceArgs),
+    /// Open the authenticated local dashboard.
+    Dashboard,
     /// Report whether the local service is reachable.
     Status,
 }

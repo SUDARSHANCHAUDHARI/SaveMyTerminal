@@ -1,7 +1,32 @@
 use crate::cli::{Cli, Command};
+use anyhow::{Context, Result};
 use clap::Parser;
 
-pub async fn run() -> anyhow::Result<i32> {
+pub trait BrowserOpener {
+    fn open(&self, url: &str) -> Result<()>;
+}
+
+struct SystemBrowser;
+
+impl BrowserOpener for SystemBrowser {
+    fn open(&self, url: &str) -> Result<()> {
+        webbrowser::open(url)
+            .map(|_| ())
+            .context("system browser launch failed")
+    }
+}
+
+pub fn open_dashboard_url(opener: &dyn BrowserOpener, url: &str) -> Result<()> {
+    opener
+        .open(url)
+        .with_context(|| format!("could not open browser; open this local URL manually:\n{url}"))
+}
+
+pub async fn run() -> Result<i32> {
+    run_with_browser(&SystemBrowser).await
+}
+
+async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
     match Cli::parse().command {
         Command::Run(args) => {
             let mut renderer = crate::renderer::PlainRenderer::stderr(!args.no_status);
@@ -25,6 +50,13 @@ pub async fn run() -> anyhow::Result<i32> {
             })
             .await?;
             service.finished().await?;
+            Ok(0)
+        }
+        Command::Dashboard => {
+            let paths = crate::paths::AppPaths::discover()?;
+            let client = crate::client::ServiceClient::ensure(&paths).await?;
+            let launch_url = client.dashboard_launch_url().await?;
+            open_dashboard_url(browser, &launch_url)?;
             Ok(0)
         }
         Command::Status => {
