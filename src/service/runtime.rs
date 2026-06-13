@@ -112,9 +112,7 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         let idle = async move {
             loop {
                 tokio::time::sleep(idle_timeout.min(Duration::from_millis(250))).await;
-                if idle_registry.active_count().await == 0
-                    && idle_registry.idle_for().await >= idle_timeout
-                {
+                if idle_registry.idle_for().await >= idle_timeout {
                     break;
                 }
             }

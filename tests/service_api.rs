@@ -107,3 +107,27 @@ async fn idle_service_stops_after_timeout() {
         .unwrap()
         .unwrap();
 }
+
+#[tokio::test]
+async fn stale_active_session_does_not_prevent_idle_shutdown() {
+    let token = "secret";
+    let mut config = ServiceConfig::for_test(SecretString::from(token.to_owned()));
+    config.idle_timeout = Duration::from_millis(50);
+    let service = spawn_test_service(config).await.unwrap();
+    let event = Event::new(Uuid::new_v4(), "generic", "unknown", EventKind::Started);
+
+    reqwest::Client::new()
+        .post(format!("{}/v1/events", service.base_url))
+        .bearer_auth(token)
+        .json(&event)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    tokio::time::timeout(Duration::from_secs(1), service.finished())
+        .await
+        .unwrap()
+        .unwrap();
+}
