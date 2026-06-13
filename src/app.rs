@@ -1,5 +1,5 @@
-use crate::cli::{Cli, Command};
-use anyhow::{Context, Result};
+use crate::cli::{Cli, Command, ConfigCommand, PathOverrides};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 
 pub trait BrowserOpener {
@@ -74,5 +74,60 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                 }
             }
         }
+        Command::Config(args) => {
+            let paths = resolve_paths(args.paths)?;
+            let settings_file = paths.settings_file();
+            match args.command {
+                ConfigCommand::Show => {
+                    let settings = crate::config::load(&settings_file)?;
+                    print!("{}", crate::config::normalized_toml(&settings)?);
+                }
+                ConfigCommand::Path => println!("{}", settings_file.display()),
+                ConfigCommand::Set { key, value } => {
+                    let mut settings = crate::config::load(&settings_file)?;
+                    crate::config::set_key(&mut settings, &key, &value)?;
+                    let backup = crate::config::save_with_backup(
+                        &settings_file,
+                        &paths.backup_dir(),
+                        &settings,
+                    )?;
+                    println!("settings updated: {}", settings_file.display());
+                    if let Some(backup) = backup {
+                        println!("backup: {}", backup.display());
+                    }
+                }
+                ConfigCommand::Reset { key, apply } => {
+                    let mut settings = crate::config::load(&settings_file)?;
+                    crate::config::reset_key(&mut settings, key.as_deref())?;
+                    if apply {
+                        let backup = crate::config::save_with_backup(
+                            &settings_file,
+                            &paths.backup_dir(),
+                            &settings,
+                        )?;
+                        println!("settings updated: {}", settings_file.display());
+                        if let Some(backup) = backup {
+                            println!("backup: {}", backup.display());
+                        }
+                    } else {
+                        println!("preview: settings reset");
+                        print!("{}", crate::config::normalized_toml(&settings)?);
+                    }
+                }
+            }
+            Ok(0)
+        }
+        Command::Setup(_) => bail!("setup execution is not available yet"),
+        Command::Doctor(_) => bail!("doctor execution is not available yet"),
+        Command::Uninstall(_) => bail!("uninstall execution is not available yet"),
     }
+}
+
+fn resolve_paths(overrides: PathOverrides) -> Result<crate::paths::AppPaths> {
+    let discovered = crate::paths::AppPaths::discover()?;
+    Ok(crate::paths::AppPaths {
+        config_dir: overrides.config_dir.unwrap_or(discovered.config_dir),
+        runtime_dir: overrides.runtime_dir.unwrap_or(discovered.runtime_dir),
+        data_dir: overrides.data_dir.unwrap_or(discovered.data_dir),
+    })
 }

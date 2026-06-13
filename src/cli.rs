@@ -18,6 +18,14 @@ pub enum Command {
     Dashboard,
     /// Report whether the local service is reachable.
     Status,
+    /// Detect local capabilities and preview or apply setup changes.
+    Setup(SetupArgs),
+    /// Inspect or change per-user settings.
+    Config(ConfigArgs),
+    /// Diagnose local configuration and integration health.
+    Doctor(DoctorArgs),
+    /// Preview or remove SaveMyTerminal-managed integrations.
+    Uninstall(UninstallArgs),
 }
 
 #[derive(Debug, Args)]
@@ -49,4 +57,80 @@ pub struct ServiceArgs {
     /// Override idle shutdown. Intended for tests.
     #[arg(long, default_value_t = 300_000, hide = true)]
     pub idle_timeout_ms: u64,
+}
+
+#[derive(Debug, Args, Default)]
+pub struct PathOverrides {
+    /// Override the config directory. Intended for tests.
+    #[arg(long, hide = true)]
+    pub config_dir: Option<PathBuf>,
+    /// Override the runtime directory. Intended for tests.
+    #[arg(long, hide = true)]
+    pub runtime_dir: Option<PathBuf>,
+    /// Override the data directory. Intended for tests.
+    #[arg(long, hide = true)]
+    pub data_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct ConfigArgs {
+    #[command(flatten)]
+    pub paths: PathOverrides,
+    #[command(subcommand)]
+    pub command: ConfigCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommand {
+    /// Print the effective normalized settings.
+    Show,
+    /// Print the settings file path without creating it.
+    Path,
+    /// Set one documented dotted key.
+    Set { key: String, value: String },
+    /// Preview or apply resetting one key or all settings.
+    Reset {
+        key: Option<String>,
+        #[arg(long)]
+        apply: bool,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct SetupArgs {
+    #[command(flatten)]
+    pub paths: PathOverrides,
+    /// Apply the displayed setup plan.
+    #[arg(long)]
+    pub apply: bool,
+    /// Limit setup to one or more registered integration identifiers.
+    #[arg(long = "integration")]
+    pub integrations: Vec<String>,
+    /// Override the home directory. Intended for tests.
+    #[arg(long, hide = true)]
+    pub home_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct DoctorArgs {
+    #[command(flatten)]
+    pub paths: PathOverrides,
+}
+
+#[derive(Debug, Args)]
+pub struct UninstallArgs {
+    #[command(flatten)]
+    pub paths: PathOverrides,
+    /// Apply the displayed removal plan.
+    #[arg(long)]
+    pub apply: bool,
+    /// Limit removal to one or more managed integration identifiers.
+    #[arg(long = "integration")]
+    pub integrations: Vec<String>,
+    /// Remove SaveMyTerminal-owned settings and authentication state.
+    #[arg(long)]
+    pub remove_config: bool,
+    /// Remove privacy-safe session history.
+    #[arg(long)]
+    pub purge_data: bool,
 }
