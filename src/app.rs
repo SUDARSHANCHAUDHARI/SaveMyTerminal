@@ -21,6 +21,18 @@ pub async fn run() -> anyhow::Result<i32> {
             service.finished().await?;
             Ok(0)
         }
-        Command::Status => Ok(0),
+        Command::Status => {
+            let paths = crate::paths::AppPaths::discover()?;
+            match crate::client::ServiceClient::connect(&paths).await {
+                Ok(client) => {
+                    println!("running {}", client.base_url());
+                    Ok(0)
+                }
+                Err(error) => {
+                    eprintln!("unavailable: {error}");
+                    Ok(1)
+                }
+            }
+        }
     }
 }
