@@ -7,3 +7,4 @@ pub mod protocol;
 pub mod renderer;
 pub mod runner;
 pub mod service;
+pub mod storage;
