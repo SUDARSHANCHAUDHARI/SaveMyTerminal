@@ -59,4 +59,8 @@ impl SessionCoordinator {
     pub fn history(&self) -> &HistoryStore {
         &self.history
     }
+
+    pub fn history_store(&self) -> HistoryStore {
+        self.history.clone()
+    }
 }

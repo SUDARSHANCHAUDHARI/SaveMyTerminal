@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 use tokio::{net::TcpListener, sync::watch, task::JoinHandle};
@@ -121,11 +125,13 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         std::fs::rename(temp, path)?;
     }
 
+    let dashboard_clients = Arc::new(AtomicUsize::new(0));
     let app = router(ApiState {
         coordinator: coordinator.clone(),
         token: config.token,
         dashboard_auth: DashboardAuth::new(config.dashboard_launch_ttl),
         base_url: base_url.clone(),
+        dashboard_clients: dashboard_clients.clone(),
     });
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     let idle_timeout = config.idle_timeout;
@@ -135,7 +141,9 @@ pub async fn spawn_service(config: ServiceConfig) -> Result<RunningService> {
         let idle = async move {
             loop {
                 tokio::time::sleep(idle_timeout.min(Duration::from_millis(250))).await;
-                if idle_coordinator.idle_for().await >= idle_timeout {
+                if idle_coordinator.idle_for().await >= idle_timeout
+                    && dashboard_clients.load(Ordering::Relaxed) == 0
+                {
                     break;
                 }
             }

@@ -1,3 +1,4 @@
+use futures_util::StreamExt;
 use reqwest::{StatusCode, redirect::Policy};
 use savemyterminal::{
     protocol::{Event, EventKind},
@@ -137,4 +138,254 @@ async fn browser_cookie_authenticates_reads_but_requires_origin_for_mutations() 
         .unwrap();
     assert_eq!(same_origin.status(), StatusCode::OK);
     service.shutdown().await;
+}
+
+#[tokio::test]
+async fn active_history_stats_delete_and_purge_follow_session_lifecycle() {
+    let token = "secret";
+    let temp = tempfile::tempdir().unwrap();
+    let mut config = ServiceConfig::for_test(SecretString::from(token.to_owned()));
+    config.database_file = Some(temp.path().join("history.sqlite3"));
+    let service = spawn_test_service(config).await.unwrap();
+    let client = reqwest::Client::new();
+    let active_id = Uuid::new_v4();
+    let completed_id = Uuid::new_v4();
+
+    for session_id in [active_id, completed_id] {
+        client
+            .post(format!("{}/v1/events", service.base_url))
+            .bearer_auth(token)
+            .json(&Event::new(
+                session_id,
+                "generic",
+                "codex",
+                EventKind::Started,
+            ))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+    }
+    client
+        .post(format!("{}/v1/events", service.base_url))
+        .bearer_auth(token)
+        .json(&Event::new(
+            completed_id,
+            "generic",
+            "codex",
+            EventKind::Completed { exit_code: 0 },
+        ))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    let active = client
+        .get(format!("{}/v1/sessions/active", service.base_url))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+    assert_eq!(active.as_array().unwrap().len(), 1);
+    assert_eq!(active[0]["session_id"], active_id.to_string());
+
+    let history = client
+        .get(format!("{}/v1/history?limit=50&offset=0", service.base_url))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+    assert_eq!(history["total"], 1);
+    assert_eq!(
+        history["sessions"][0]["session_id"],
+        completed_id.to_string()
+    );
+
+    let stats = client
+        .get(format!("{}/v1/history/stats", service.base_url))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+    assert_eq!(stats["session_count"], 1);
+
+    assert_eq!(
+        client
+            .delete(format!("{}/v1/history/{active_id}", service.base_url))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        client
+            .delete(format!("{}/v1/history/{completed_id}", service.base_url))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        client
+            .delete(format!("{}/v1/history", service.base_url))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn history_unavailable_does_not_break_live_sessions() {
+    let token = "secret";
+    let service = spawn_test_service(ServiceConfig::for_test(SecretString::from(
+        token.to_owned(),
+    )))
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    client
+        .post(format!("{}/v1/events", service.base_url))
+        .bearer_auth(token)
+        .json(&Event::new(
+            Uuid::new_v4(),
+            "generic",
+            "unknown",
+            EventKind::Started,
+        ))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    assert_eq!(
+        client
+            .get(format!("{}/v1/history", service.base_url))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        client
+            .get(format!("{}/v1/sessions/active", service.base_url))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn sse_sends_initial_and_changed_session_snapshots() {
+    let token = "secret";
+    let service = spawn_test_service(ServiceConfig::for_test(SecretString::from(
+        token.to_owned(),
+    )))
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let response = client
+        .get(format!("{}/v1/sessions/stream", service.base_url))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    let mut stream = response.bytes_stream();
+    let initial = tokio::time::timeout(Duration::from_secs(1), stream.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&initial).contains("event: sessions"));
+
+    let session_id = Uuid::new_v4();
+    client
+        .post(format!("{}/v1/events", service.base_url))
+        .bearer_auth(token)
+        .json(&Event::new(
+            session_id,
+            "generic",
+            "codex",
+            EventKind::Started,
+        ))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    let changed = tokio::time::timeout(Duration::from_secs(1), stream.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&changed).contains(&session_id.to_string()));
+    drop(stream);
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn connected_sse_client_prevents_idle_shutdown_until_disconnect() {
+    let token = "secret";
+    let mut config = ServiceConfig::for_test(SecretString::from(token.to_owned()));
+    config.idle_timeout = Duration::from_millis(50);
+    let service = spawn_test_service(config).await.unwrap();
+    let response = reqwest::Client::new()
+        .get(format!("{}/v1/sessions/stream", service.base_url))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        reqwest::Client::new()
+            .get(format!("{}/v1/health", service.base_url))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+
+    drop(response);
+    tokio::time::timeout(Duration::from_secs(1), service.finished())
+        .await
+        .unwrap()
+        .unwrap();
 }
