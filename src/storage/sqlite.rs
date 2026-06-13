@@ -1,10 +1,10 @@
 use crate::{
     protocol::{EventKind, FailureCategory, SessionSnapshot, SessionState},
-    storage::{AdapterKind, HistoryPage, SessionSummary},
+    storage::{AdapterKind, HistoryPage, HistoryStats, SessionSummary},
 };
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, OptionalExtension, params};
-use std::{path::Path, sync::Mutex, time::Duration};
+use std::{collections::BTreeMap, path::Path, sync::Mutex, time::Duration};
 use uuid::Uuid;
 
 const SCHEMA_VERSION: i64 = 1;
@@ -163,6 +163,86 @@ impl SqliteStore {
             total: u64::try_from(total).context("negative history count")?,
             limit,
             offset,
+        })
+    }
+
+    pub fn recover_interrupted(&self) -> Result<usize> {
+        let connection = self.connection()?;
+        Ok(connection.execute(
+            "UPDATE sessions SET
+                ended_at_ms = updated_at_ms,
+                duration_ms = MAX(0, updated_at_ms - started_at_ms),
+                final_state = 'interrupted',
+                transition_count = transition_count + 1,
+                finalized = 1
+             WHERE finalized = 0",
+            [],
+        )?)
+    }
+
+    pub fn cleanup_before(&self, cutoff_ms: u64) -> Result<usize> {
+        let connection = self.connection()?;
+        Ok(connection.execute(
+            "DELETE FROM sessions
+             WHERE finalized = 1 AND ended_at_ms < ?1",
+            [to_i64(cutoff_ms)?],
+        )?)
+    }
+
+    pub fn stats(&self) -> Result<HistoryStats> {
+        let connection = self.connection()?;
+        let (session_count, total_duration_ms, average_duration_ms): (i64, i64, Option<f64>) =
+            connection.query_row(
+                "SELECT COUNT(*), COALESCE(SUM(duration_ms), 0), AVG(duration_ms)
+                 FROM sessions WHERE finalized = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?;
+        let (average_cpu_percent, peak_cpu_percent, average_memory_bytes, peak_memory_bytes): (
+            Option<f64>,
+            Option<f64>,
+            Option<f64>,
+            Option<i64>,
+        ) = connection.query_row(
+            "SELECT
+                CASE WHEN SUM(cpu_sample_count) = 0 THEN NULL
+                     ELSE SUM(cpu_sum) / SUM(cpu_sample_count) END,
+                MAX(peak_cpu_percent),
+                CASE WHEN SUM(memory_sample_count) = 0 THEN NULL
+                     ELSE CAST(SUM(memory_sum) AS REAL) / SUM(memory_sample_count) END,
+                MAX(peak_memory_bytes)
+             FROM sessions WHERE finalized = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        let mut states = BTreeMap::new();
+        let mut statement = connection.prepare(
+            "SELECT final_state, COUNT(*) FROM sessions
+             WHERE finalized = 1 GROUP BY final_state ORDER BY final_state",
+        )?;
+        for result in statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })? {
+            let (state, count) = result?;
+            states.insert(state, u64::try_from(count).context("negative state count")?);
+        }
+        Ok(HistoryStats {
+            session_count: u64::try_from(session_count).context("negative session count")?,
+            total_duration_ms: u64::try_from(total_duration_ms)
+                .context("negative total duration")?,
+            average_duration_ms: average_duration_ms
+                .map(|value| rounded_u64(value, "negative average duration"))
+                .transpose()?,
+            states,
+            average_cpu_percent: average_cpu_percent.map(|value| value as f32),
+            peak_cpu_percent: peak_cpu_percent.map(|value| value as f32),
+            average_memory_bytes: average_memory_bytes
+                .map(|value| rounded_u64(value, "negative average memory"))
+                .transpose()?,
+            peak_memory_bytes: peak_memory_bytes
+                .map(|value| u64::try_from(value).context("negative peak memory"))
+                .transpose()?,
+            context_peak: None,
         })
     }
 
@@ -373,6 +453,13 @@ fn parse_failure(value: &str) -> Option<FailureCategory> {
 
 fn to_i64(value: u64) -> Result<i64> {
     i64::try_from(value).context("value exceeds SQLite integer range")
+}
+
+fn rounded_u64(value: f64, message: &'static str) -> Result<u64> {
+    if !value.is_finite() || value < 0.0 || value > u64::MAX as f64 {
+        bail!(message);
+    }
+    Ok(value.round() as u64)
 }
 
 fn to_sql_error(error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::Error {

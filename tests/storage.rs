@@ -1,7 +1,10 @@
 use savemyterminal::{
     paths::AppPaths,
-    protocol::{EventKind, FailureCategory, SessionSnapshot, SessionState},
-    storage::{AdapterKind, DeleteOutcome, SessionSummary, SqliteStore},
+    protocol::{
+        EventKind, FailureCategory, Metric, MetricQuality, MetricSource, SessionSnapshot,
+        SessionState,
+    },
+    storage::{AdapterKind, DeleteOutcome, HistoryStore, SessionSummary, SqliteStore},
 };
 use std::{collections::BTreeSet, path::PathBuf};
 use uuid::Uuid;
@@ -209,4 +212,137 @@ fn sqlite_purge_removes_only_finalized_rows() {
         DeleteOutcome::Active
     );
     assert_eq!(store.history(50, 0).unwrap().total, 0);
+}
+
+#[test]
+fn recovery_finalizes_unfinished_sessions_as_interrupted() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("history.sqlite3");
+    let session_id = Uuid::new_v4();
+    let store = SqliteStore::open(&path).unwrap();
+    let started = started_snapshot(session_id, "codex", 100);
+    store
+        .record(&started, &EventKind::Started, AdapterKind::Generic)
+        .unwrap();
+    let mut waiting = started;
+    waiting.state = SessionState::Waiting;
+    waiting.updated_at_ms = 250;
+    store
+        .record(&waiting, &EventKind::Waiting, AdapterKind::Generic)
+        .unwrap();
+    drop(store);
+
+    let reopened = SqliteStore::open(&path).unwrap();
+    assert_eq!(reopened.recover_interrupted().unwrap(), 1);
+    let summary = &reopened.history(10, 0).unwrap().sessions[0];
+
+    assert_eq!(summary.final_state, SessionState::Interrupted);
+    assert_eq!(summary.ended_at_ms, 250);
+    assert_eq!(summary.duration_ms, 150);
+}
+
+#[test]
+fn retention_removes_only_finalized_sessions_older_than_cutoff() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = SqliteStore::open(&temp.path().join("history.sqlite3")).unwrap();
+    let old_id = Uuid::new_v4();
+    let boundary_id = Uuid::new_v4();
+    let active_id = Uuid::new_v4();
+
+    for (session_id, end) in [
+        (old_id, Some(199)),
+        (boundary_id, Some(200)),
+        (active_id, None),
+    ] {
+        let started = started_snapshot(session_id, "unknown", 100);
+        store
+            .record(&started, &EventKind::Started, AdapterKind::Generic)
+            .unwrap();
+        if let Some(end) = end {
+            let mut completed = started;
+            completed.state = SessionState::Completed;
+            completed.updated_at_ms = end;
+            store
+                .record(
+                    &completed,
+                    &EventKind::Completed { exit_code: 0 },
+                    AdapterKind::Generic,
+                )
+                .unwrap();
+        }
+    }
+
+    assert_eq!(store.cleanup_before(200).unwrap(), 1);
+    let history = store.history(10, 0).unwrap();
+    assert_eq!(history.total, 1);
+    assert_eq!(history.sessions[0].session_id, boundary_id);
+    assert_eq!(
+        store.delete_finalized(active_id).unwrap(),
+        DeleteOutcome::Active
+    );
+}
+
+#[test]
+fn stats_aggregate_duration_states_and_resource_samples() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = SqliteStore::open(&temp.path().join("history.sqlite3")).unwrap();
+    let session_id = Uuid::new_v4();
+    let mut snapshot = started_snapshot(session_id, "codex", 100);
+    store
+        .record(&snapshot, &EventKind::Started, AdapterKind::Generic)
+        .unwrap();
+    for (cpu, memory, timestamp) in [(10.0, 100, 120), (20.0, 300, 140)] {
+        snapshot.updated_at_ms = timestamp;
+        store
+            .record(
+                &snapshot,
+                &EventKind::Metrics {
+                    cpu_percent: Some(Metric::new(cpu, MetricQuality::Exact, MetricSource::Os)),
+                    memory_bytes: Some(Metric::new(memory, MetricQuality::Exact, MetricSource::Os)),
+                },
+                AdapterKind::Generic,
+            )
+            .unwrap();
+    }
+    snapshot.state = SessionState::Completed;
+    snapshot.updated_at_ms = 200;
+    store
+        .record(
+            &snapshot,
+            &EventKind::Completed { exit_code: 0 },
+            AdapterKind::Generic,
+        )
+        .unwrap();
+
+    let stats = store.stats().unwrap();
+
+    assert_eq!(stats.session_count, 1);
+    assert_eq!(stats.total_duration_ms, 100);
+    assert_eq!(stats.average_duration_ms, Some(100));
+    assert_eq!(stats.states.get("completed"), Some(&1));
+    assert_eq!(stats.average_cpu_percent, Some(15.0));
+    assert_eq!(stats.peak_cpu_percent, Some(20.0));
+    assert_eq!(stats.average_memory_bytes, Some(200));
+    assert_eq!(stats.peak_memory_bytes, Some(300));
+}
+
+#[test]
+fn unsupported_newer_schema_is_rejected() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("history.sqlite3");
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 99).unwrap();
+    drop(connection);
+
+    assert!(SqliteStore::open(&path).is_err());
+}
+
+#[test]
+fn unavailable_history_store_reports_a_stable_error() {
+    let store = HistoryStore::unavailable("migration failed");
+
+    assert_eq!(
+        store.history(10, 0).unwrap_err().to_string(),
+        "session history is unavailable"
+    );
 }
