@@ -26,6 +26,7 @@ impl Default for SessionRegistry {
 impl SessionRegistry {
     pub async fn apply(&self, event: Event) -> Result<SessionSnapshot, RegistryError> {
         event.validate()?;
+        let context_pressure = event.context_pressure.clone();
         *self.last_activity.write().await = Instant::now();
         let mut sessions = self.sessions.write().await;
 
@@ -43,6 +44,7 @@ impl SessionRegistry {
                 updated_at_ms: event.timestamp_ms,
                 cpu_percent: None,
                 memory_bytes: None,
+                context_pressure,
             };
             sessions.insert(snapshot.session_id, snapshot.clone());
             return Ok(snapshot);
@@ -56,6 +58,9 @@ impl SessionRegistry {
         }
         if snapshot.adapter_id != event.adapter_id || snapshot.agent_id != event.agent_id {
             return Err(RegistryError::IdentityMismatch);
+        }
+        if context_pressure.is_some() {
+            snapshot.context_pressure = context_pressure;
         }
 
         match event.kind {

@@ -22,6 +22,7 @@ fn release_files_are_present() {
         "LICENSE",
         "docs/compatibility.md",
         "docs/release-checklist.md",
+        "docs/verification-matrix.md",
         "scripts/install.ps1",
         "scripts/install.sh",
         "scripts/package.ps1",
@@ -86,6 +87,13 @@ fn installers_do_not_require_rust_or_modify_startup_configuration() {
             );
         }
     }
+}
+
+#[test]
+fn unix_installer_refreshes_macos_code_signature_after_upgrade() {
+    let installer = read(repository_root().join("scripts/install.sh"));
+    assert!(installer.contains("uname -s"));
+    assert!(installer.contains("codesign --force --sign -"));
 }
 
 #[test]
@@ -166,4 +174,15 @@ fn readme_documents_the_completed_product() {
         assert!(readme.contains(section), "README is missing {section}");
     }
     assert!(!readme.contains("planned for later phases"));
+    for required in [
+        "smt run -- codex",
+        "state-reactive black-hole",
+        "Context pressure remains unavailable",
+        "config.ghostty",
+    ] {
+        assert!(
+            readme.contains(required),
+            "README must document the verified renderer contract: {required}"
+        );
+    }
 }

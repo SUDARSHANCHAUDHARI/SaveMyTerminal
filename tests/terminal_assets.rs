@@ -22,6 +22,20 @@ fn shader_uses_only_terminal_uniforms_and_contains_no_captured_content_fields() 
     for prohibited in ["prompt", "response", "command", "transcript", "cwd"] {
         assert!(!GHOSTTY_SHADER.contains(prohibited));
     }
+    assert!(!GHOSTTY_SHADER.contains("float active ="));
+    for required in [
+        "decodeState",
+        "decodeIntensity",
+        "decodeContext",
+        "STATE_THINKING",
+        "STATE_TOOL_RUNNING",
+        "STATE_WAITING",
+    ] {
+        assert!(
+            GHOSTTY_SHADER.contains(required),
+            "shader must decode live renderer signal {required}"
+        );
+    }
 }
 
 #[test]
@@ -33,12 +47,12 @@ fn terminal_descriptors_target_documented_user_locations() {
         data_dir: temp.path().join("data"),
     };
     let descriptors = descriptors(temp.path(), &paths, OsId::Macos);
-    assert!(
-        descriptors
-            .iter()
-            .any(|item| item.id == "ghostty"
-                && item.target.ends_with("com.mitchellh.ghostty/config"))
-    );
+    assert!(descriptors.iter().any(|item| {
+        item.id == "ghostty"
+            && item
+                .target
+                .ends_with("com.mitchellh.ghostty/config.ghostty")
+    }));
     assert!(
         descriptors
             .iter()

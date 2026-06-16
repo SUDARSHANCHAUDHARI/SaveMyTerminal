@@ -1,9 +1,10 @@
-use crate::protocol::{Event, EventKind, ToolCategory};
+use crate::protocol::{Event, EventKind, Metric, MetricQuality, MetricSource, ToolCategory};
 use serde::Deserialize;
 use thiserror::Error;
 use uuid::Uuid;
 
 pub const MAX_HOOK_INPUT_BYTES: usize = 64 * 1024;
+pub const ATTACHED_SESSION_ENV: &str = "SMT_ATTACHED_SESSION_ID";
 const SESSION_NAMESPACE: Uuid = Uuid::from_u128(0x35de3ca4_54e8_4b76_8a64_eb320718cab4);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -41,6 +42,18 @@ struct HookEnvelope {
     reason: Option<String>,
     #[serde(default)]
     source: Option<String>,
+    #[serde(default)]
+    context_percent: Option<f32>,
+    #[serde(default)]
+    context_window: Option<ContextWindow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ContextWindow {
+    #[serde(alias = "used", alias = "current_tokens")]
+    used_tokens: u64,
+    #[serde(alias = "limit", alias = "context_window_size")]
+    max_tokens: u64,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -95,12 +108,19 @@ pub fn map_hook(agent: NativeAgent, input: &[u8]) -> Result<Option<Event>, Adapt
     };
     let name = format!("{}:{}", agent.id(), envelope.session_id);
     let session_id = Uuid::new_v5(&SESSION_NAMESPACE, name.as_bytes());
-    Ok(Some(Event::new(
-        session_id,
-        agent.adapter_id(),
-        agent.id(),
-        kind,
-    )))
+    let mut event = Event::new(session_id, agent.adapter_id(), agent.id(), kind);
+    event.context_pressure = context_pressure(&envelope);
+    Ok(Some(event))
+}
+
+fn context_pressure(envelope: &HookEnvelope) -> Option<Metric<f32>> {
+    let percent = envelope.context_percent.or_else(|| {
+        let window = envelope.context_window.as_ref()?;
+        (window.max_tokens > 0)
+            .then(|| (window.used_tokens as f64 * 100.0 / window.max_tokens as f64) as f32)
+    })?;
+    (percent.is_finite() && (0.0..=100.0).contains(&percent))
+        .then(|| Metric::new(percent, MetricQuality::Exact, MetricSource::Agent))
 }
 
 pub fn categorize_tool(name: &str) -> ToolCategory {
@@ -133,4 +153,15 @@ pub fn categorize_tool(name: &str) -> ToolCategory {
     } else {
         ToolCategory::Other
     }
+}
+
+pub fn attach_to_wrapper(mut event: Event, wrapper_session_id: Option<&str>) -> Event {
+    if let Some(session_id) = wrapper_session_id.and_then(|value| Uuid::parse_str(value).ok()) {
+        event.session_id = session_id;
+        event.adapter_id = "generic".to_owned();
+        if matches!(event.kind, EventKind::Interrupted) {
+            event.kind = EventKind::Waiting;
+        }
+    }
+    event
 }

@@ -1,5 +1,8 @@
 use crate::{
-    protocol::{EventKind, FailureCategory, SessionSnapshot, SessionState},
+    protocol::{
+        EventKind, FailureCategory, Metric, MetricQuality, MetricSource, SessionSnapshot,
+        SessionState,
+    },
     storage::{AdapterKind, HistoryPage, HistoryStats, SessionSummary},
 };
 use anyhow::{Context, Result, bail};
@@ -133,6 +136,7 @@ impl SqliteStore {
                 )?;
             }
         }
+        record_context(&connection, snapshot)?;
         Ok(())
     }
 
@@ -151,7 +155,8 @@ impl SqliteStore {
                 CASE WHEN cpu_sample_count = 0 THEN NULL ELSE cpu_sum / cpu_sample_count END,
                 peak_cpu_percent,
                 CASE WHEN memory_sample_count = 0 THEN NULL ELSE memory_sum / memory_sample_count END,
-                peak_memory_bytes
+                peak_memory_bytes,
+                context_peak, context_final, context_quality, context_source
              FROM sessions
              WHERE finalized = 1
              ORDER BY ended_at_ms DESC, session_id ASC
@@ -228,6 +233,26 @@ impl SqliteStore {
             let (state, count) = result?;
             states.insert(state, u64::try_from(count).context("negative state count")?);
         }
+        let context_peak = connection
+            .query_row(
+                "SELECT context_peak, context_quality, context_source
+                 FROM sessions
+                 WHERE finalized = 1 AND context_peak IS NOT NULL
+                 ORDER BY context_peak DESC
+                 LIMIT 1",
+                [],
+                |row| {
+                    let value: f32 = row.get(0)?;
+                    let quality: String = row.get(1)?;
+                    let source: String = row.get(2)?;
+                    Ok(Metric::new(
+                        value,
+                        parse_metric_quality(&quality).ok_or_else(invalid_sql_value)?,
+                        parse_metric_source(&source).ok_or_else(invalid_sql_value)?,
+                    ))
+                },
+            )
+            .optional()?;
         Ok(HistoryStats {
             session_count: u64::try_from(session_count).context("negative session count")?,
             total_duration_ms: u64::try_from(total_duration_ms)
@@ -244,7 +269,7 @@ impl SqliteStore {
             peak_memory_bytes: peak_memory_bytes
                 .map(|value| u64::try_from(value).context("negative peak memory"))
                 .transpose()?,
-            context_peak: None,
+            context_peak,
         })
     }
 
@@ -360,6 +385,30 @@ fn finalize(
     Ok(())
 }
 
+fn record_context(connection: &Connection, snapshot: &SessionSnapshot) -> Result<()> {
+    let Some(context) = &snapshot.context_pressure else {
+        return Ok(());
+    };
+    connection.execute(
+        "UPDATE sessions SET
+            context_peak = CASE
+                WHEN context_peak IS NULL OR ?2 > context_peak THEN ?2
+                ELSE context_peak
+            END,
+            context_final = ?2,
+            context_quality = ?3,
+            context_source = ?4
+         WHERE session_id = ?1",
+        params![
+            snapshot.session_id.to_string(),
+            f64::from(context.value),
+            metric_quality_name(context.quality),
+            metric_source_name(context.source),
+        ],
+    )?;
+    Ok(())
+}
+
 fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary> {
     let session_id: String = row.get(0)?;
     let adapter_kind: String = row.get(4)?;
@@ -369,6 +418,23 @@ fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary>
         .as_deref()
         .map(|value| parse_failure(value).ok_or_else(invalid_sql_value))
         .transpose()?;
+    let context_quality: Option<String> = row.get(19)?;
+    let context_source: Option<String> = row.get(20)?;
+    let context_metadata = context_quality
+        .as_deref()
+        .zip(context_source.as_deref())
+        .map(|(quality, source)| {
+            Ok::<(MetricQuality, MetricSource), rusqlite::Error>((
+                parse_metric_quality(quality).ok_or_else(invalid_sql_value)?,
+                parse_metric_source(source).ok_or_else(invalid_sql_value)?,
+            ))
+        })
+        .transpose()?;
+    let context_metric = |value: Option<f32>| {
+        value
+            .zip(context_metadata)
+            .map(|(value, (quality, source))| Metric::new(value, quality, source))
+    };
     Ok(SessionSummary {
         session_id: Uuid::parse_str(&session_id).map_err(to_sql_error)?,
         agent_id: row.get(1)?,
@@ -387,8 +453,8 @@ fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary>
         peak_cpu_percent: row.get(14)?,
         avg_memory_bytes: row_optional_u64(row, 15)?,
         peak_memory_bytes: row_optional_u64(row, 16)?,
-        context_peak: None,
-        context_final: None,
+        context_peak: context_metric(row.get(17)?),
+        context_final: context_metric(row.get(18)?),
     })
 }
 
@@ -449,6 +515,40 @@ fn parse_failure(value: &str) -> Option<FailureCategory> {
         "adapter" => Some(FailureCategory::Adapter),
         "protocol" => Some(FailureCategory::Protocol),
         "unknown" => Some(FailureCategory::Unknown),
+        _ => None,
+    }
+}
+
+fn metric_quality_name(quality: MetricQuality) -> &'static str {
+    match quality {
+        MetricQuality::Exact => "exact",
+        MetricQuality::Estimated => "estimated",
+        MetricQuality::Unavailable => "unavailable",
+    }
+}
+
+fn parse_metric_quality(value: &str) -> Option<MetricQuality> {
+    match value {
+        "exact" => Some(MetricQuality::Exact),
+        "estimated" => Some(MetricQuality::Estimated),
+        "unavailable" => Some(MetricQuality::Unavailable),
+        _ => None,
+    }
+}
+
+fn metric_source_name(source: MetricSource) -> &'static str {
+    match source {
+        MetricSource::Agent => "agent",
+        MetricSource::Os => "os",
+        MetricSource::Heuristic => "heuristic",
+    }
+}
+
+fn parse_metric_source(value: &str) -> Option<MetricSource> {
+    match value {
+        "agent" => Some(MetricSource::Agent),
+        "os" => Some(MetricSource::Os),
+        "heuristic" => Some(MetricSource::Heuristic),
         _ => None,
     }
 }

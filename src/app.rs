@@ -46,6 +46,7 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             let mut renderer = crate::renderer::HybridRenderer::stderr(
                 !args.no_status && settings.presentation.status_enabled,
                 settings.presentation.ambient_enabled && ambient_terminal,
+                settings.presentation.ambient_intensity,
             );
             crate::runner::run_with_options(
                 args.command,
@@ -54,6 +55,8 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                     paths,
                     cpu_diagnostics: settings.diagnostics.cpu,
                     memory_diagnostics: settings.diagnostics.memory,
+                    ambient_intensity: settings.presentation.ambient_intensity,
+                    session_id: None,
                 },
             )
             .await
@@ -489,6 +492,12 @@ async fn run_native_hook(agent: crate::adapter::NativeAgent) {
     let Ok(Some(event)) = crate::adapter::map_hook(agent, &input) else {
         return;
     };
+    let event = crate::adapter::attach_to_wrapper(
+        event,
+        std::env::var(crate::adapter::ATTACHED_SESSION_ENV)
+            .ok()
+            .as_deref(),
+    );
     let Ok(paths) = crate::paths::AppPaths::discover() else {
         return;
     };

@@ -1,7 +1,7 @@
-use crate::protocol::{SessionSnapshot, SessionState};
+use crate::protocol::{Metric, SessionSnapshot, SessionState};
 use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SnapshotView {
     pub active_count: usize,
@@ -10,6 +10,8 @@ pub struct SnapshotView {
     pub label: String,
     pub color: String,
     pub intensity: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_pressure: Option<Metric<f32>>,
 }
 
 impl SnapshotView {
@@ -26,6 +28,7 @@ impl SnapshotView {
                 label: "smt idle".to_owned(),
                 color: "#6b7280".to_owned(),
                 intensity,
+                context_pressure: None,
             };
         };
         let state_label = state_label(primary.state);
@@ -41,6 +44,7 @@ impl SnapshotView {
             label: format!("smt {} {state_label}{suffix}", primary.agent_id),
             color: state_color(primary.state).to_owned(),
             intensity,
+            context_pressure: primary.context_pressure.clone(),
         }
     }
 }

@@ -31,6 +31,8 @@ pub struct SessionSnapshot {
     pub updated_at_ms: u64,
     pub cpu_percent: Option<Metric<f32>>,
     pub memory_bytes: Option<Metric<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_pressure: Option<Metric<f32>>,
 }
 
 impl SessionSnapshot {

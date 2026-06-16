@@ -1,6 +1,9 @@
 use savemyterminal::{
-    adapter::{AdapterError, MAX_HOOK_INPUT_BYTES, NativeAgent, categorize_tool, map_hook},
-    protocol::{EventKind, ToolCategory},
+    adapter::{
+        AdapterError, MAX_HOOK_INPUT_BYTES, NativeAgent, attach_to_wrapper, categorize_tool,
+        map_hook,
+    },
+    protocol::{EventKind, MetricQuality, MetricSource, ToolCategory},
 };
 
 #[test]
@@ -24,6 +27,48 @@ fn maps_each_native_lifecycle_without_claiming_turn_end_is_completion() {
             .unwrap();
         assert_eq!(event.kind, expected);
     }
+}
+
+#[test]
+fn attached_hook_targets_only_its_generic_wrapper_session() {
+    let wrapper_id = uuid::Uuid::new_v4();
+    let input = br#"{"session_id":"native","hook_event_name":"PreToolUse","tool_name":"Bash"}"#;
+    let event = map_hook(NativeAgent::Codex, input).unwrap().unwrap();
+
+    let attached = attach_to_wrapper(event, Some(&wrapper_id.to_string()));
+
+    assert_eq!(attached.session_id, wrapper_id);
+    assert_eq!(attached.adapter_id, "generic");
+}
+
+#[test]
+fn attached_wrapper_owns_process_completion() {
+    let wrapper_id = uuid::Uuid::new_v4();
+    let input = br#"{"session_id":"native","hook_event_name":"SessionEnd"}"#;
+    let event = map_hook(NativeAgent::Claude, input).unwrap().unwrap();
+
+    let attached = attach_to_wrapper(event, Some(&wrapper_id.to_string()));
+
+    assert_eq!(attached.kind, EventKind::Waiting);
+}
+
+#[test]
+fn maps_optional_context_pressure_without_reading_conversation_content() {
+    let input = serde_json::json!({
+        "session_id": "native-session",
+        "hook_event_name": "UserPromptSubmit",
+        "context_window": {"used_tokens": 7500, "max_tokens": 10000},
+        "prompt": "must-not-be-captured"
+    });
+
+    let event = map_hook(NativeAgent::Codex, input.to_string().as_bytes())
+        .unwrap()
+        .unwrap();
+    let context = event.context_pressure.unwrap();
+
+    assert_eq!(context.value, 75.0);
+    assert_eq!(context.quality, MetricQuality::Exact);
+    assert_eq!(context.source, MetricSource::Agent);
 }
 
 #[test]

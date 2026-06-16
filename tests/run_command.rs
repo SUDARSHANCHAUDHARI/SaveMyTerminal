@@ -2,14 +2,35 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use savemyterminal::config::{Settings, save_atomic};
 use savemyterminal::{
+    client::ServiceClient,
     paths::AppPaths,
-    protocol::SessionState,
+    protocol::{Event, EventKind, SessionState},
+    renderer::{Renderer, SnapshotView},
     runner::{RunOptions, run_with_options},
     service::{ServiceConfig, spawn_test_service},
     storage::SqliteStore,
 };
 use secrecy::SecretString;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use uuid::Uuid;
+
+#[derive(Clone, Default)]
+struct RecordingRenderer {
+    states: Arc<Mutex<Vec<SessionState>>>,
+}
+
+impl Renderer for RecordingRenderer {
+    fn started(&mut self, _agent_id: &str) {}
+    fn finished(&mut self, _agent_id: &str, _exit_code: i32) {}
+    fn warning(&mut self, _message: &str) {}
+
+    fn snapshot(&mut self, view: &SnapshotView) {
+        if let Some(state) = view.state {
+            self.states.lock().unwrap().push(state);
+        }
+    }
+}
 
 fn build_helper() -> (tempfile::TempDir, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
@@ -151,6 +172,8 @@ async fn disabled_resource_diagnostics_emit_lifecycle_without_metric_samples() {
             paths: paths.clone(),
             cpu_diagnostics: false,
             memory_diagnostics: false,
+            ambient_intensity: 60,
+            session_id: None,
         },
     )
     .await
@@ -165,5 +188,87 @@ async fn disabled_resource_diagnostics_emit_lifecycle_without_metric_samples() {
     assert_eq!(history.sessions[0].final_state, SessionState::Completed);
     assert_eq!(history.sessions[0].avg_cpu_percent, None);
     assert_eq!(history.sessions[0].avg_memory_bytes, None);
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn attached_wrapper_relays_native_state_snapshots_to_the_renderer() {
+    let (_temp, helper) = build_helper();
+    let state = tempfile::tempdir().unwrap();
+    let paths = AppPaths {
+        config_dir: state.path().join("config"),
+        runtime_dir: state.path().join("runtime"),
+        data_dir: state.path().join("data"),
+    };
+    let token = "secret";
+    std::fs::create_dir_all(&paths.config_dir).unwrap();
+    std::fs::write(paths.token_file(), token).unwrap();
+
+    let mut service_config = ServiceConfig::for_test(SecretString::from(token.to_owned()));
+    service_config.discovery_file = Some(paths.discovery_file());
+    let service = spawn_test_service(service_config).await.unwrap();
+    let client = ServiceClient::connect(&paths).await.unwrap();
+    let session_id = Uuid::new_v4();
+    let unrelated_id = Uuid::new_v4();
+    let events = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        client
+            .send(&Event::new(
+                session_id,
+                "generic",
+                "unknown",
+                EventKind::Thinking,
+            ))
+            .await
+            .unwrap();
+        client
+            .send(&Event::new(
+                unrelated_id,
+                "codex-hooks",
+                "codex",
+                EventKind::Started,
+            ))
+            .await
+            .unwrap();
+        client
+            .send(&Event::new(
+                unrelated_id,
+                "codex-hooks",
+                "codex",
+                EventKind::ToolRunning {
+                    category: savemyterminal::protocol::ToolCategory::Shell,
+                },
+            ))
+            .await
+            .unwrap();
+    });
+
+    let mut renderer = RecordingRenderer::default();
+    let recorded = renderer.states.clone();
+    let code = run_with_options(
+        vec![
+            helper.to_string_lossy().into_owned(),
+            "0".to_owned(),
+            "sleep=900".to_owned(),
+        ],
+        &mut renderer,
+        RunOptions {
+            paths,
+            cpu_diagnostics: true,
+            memory_diagnostics: true,
+            ambient_intensity: 60,
+            session_id: Some(session_id),
+        },
+    )
+    .await
+    .unwrap();
+    events.await.unwrap();
+
+    assert_eq!(code, 0);
+    {
+        let states = recorded.lock().unwrap();
+        assert!(states.contains(&SessionState::Thinking));
+        assert!(!states.contains(&SessionState::ToolRunning));
+    }
     service.shutdown().await;
 }

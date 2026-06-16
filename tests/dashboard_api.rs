@@ -470,6 +470,8 @@ async fn dashboard_assets_are_embedded_same_origin_and_hardened() {
     assert!(!javascript.contains("localStorage"));
     assert!(!javascript.contains("https://"));
     assert!(!javascript.contains("http://"));
+    assert!(javascript.contains("context_pressure"));
+    assert!(javascript.contains("Context"));
     assert!(javascript.contains("function escapeAttribute"));
     assert!(javascript.contains("&quot;"));
     service.shutdown().await;
