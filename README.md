@@ -87,8 +87,9 @@ smt run -- codex
 The shader reacts to normalized states: indigo while starting, purple while thinking, amber
 while a tool runs, and cyan while waiting. Animation speed changes with state. When context
 pressure is available, it changes the accretion-disk radius and the disk shifts toward red as
-the window approaches full; otherwise the shader uses a neutral fallback. Context pressure
-remains unavailable when an agent's hook payload does not expose safe usage metadata.
+the window approaches full; otherwise the shader uses a neutral fallback.
+Context pressure remains unavailable when an agent's hook payload does not expose safe usage
+metadata, unless you enable the optional transcript source described below.
 
 By default SaveMyTerminal never opens transcript files. If you want the disk to track context
 for an agent that records local usage counters (such as Claude Code), you can opt in:

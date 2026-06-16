@@ -273,6 +273,13 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             } else {
                 println!("preview: create settings at {}", settings_file.display());
             }
+            if !selected_terminals.is_empty() || !selected_agents.is_empty() {
+                println!(
+                    "optional: let the black-hole disk track context fill by reading only local \
+                     token counts (off by default):"
+                );
+                println!("  smt config set presentation.context_from_transcript true");
+            }
             Ok(0)
         }
         Command::Doctor(args) => {
