@@ -4,6 +4,12 @@ All notable changes to SaveMyTerminal are documented here.
 
 ## Unreleased
 
+### Added
+
+- Optional `presentation.context_from_transcript` setting (default off). When enabled, the disk
+  tracks context-window fill for agents that record local usage counters, reading only numeric
+  token counts and the model id — never prompt or response text.
+
 ### Fixed
 
 - Replaced the static Ghostty corner glow with a state-reactive black-hole shader.
