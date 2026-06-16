@@ -186,9 +186,12 @@ SaveMyTerminal does not capture prompts, responses, terminal output, raw command
 arguments, environment values, file contents, or working-directory paths. Normal operation
 uses only an authenticated loopback service and has no remote endpoint or telemetry.
 
-See [compatibility](docs/compatibility.md), the [V1 design](docs/superpowers/specs/2026-06-13-savemyterminal-design.md),
-the [verification matrix](docs/verification-matrix.md), and the
-[release checklist](docs/release-checklist.md).
+## Documentation
+
+The [docs index](docs/README.md) links everything:
+
+- Reference: [compatibility](docs/compatibility.md), [verification matrix](docs/verification-matrix.md), [release checklist](docs/release-checklist.md)
+- Planning & design: the [V1 roadmap](docs/superpowers/plans/2026-06-13-savemyterminal-v1-roadmap.md), the [V1 design](docs/superpowers/specs/2026-06-13-savemyterminal-design.md), and the per-phase specs and plans
 
 ## Tech Stack
 
