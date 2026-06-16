@@ -34,9 +34,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 delta = uv - center;
     delta.x *= iResolution.x / iResolution.y;
     float radius = length(delta);
-    float speed = mix(0.35, 2.4, step(STATE_THINKING - 0.5, state));
+    float speed = mix(0.8, 2.4, step(STATE_THINKING - 0.5, state));
     speed = mix(speed, 3.6, step(STATE_TOOL_RUNNING - 0.5, state));
-    speed = mix(speed, 0.18, step(STATE_WAITING - 0.5, state));
+    speed = mix(speed, 0.6, step(STATE_WAITING - 0.5, state));
     float angle = atan(delta.y, delta.x) + iTime * speed;
 
     float lens = signalEnabled * intensity * smoothstep(0.22, 0.025, radius) * 0.018;
