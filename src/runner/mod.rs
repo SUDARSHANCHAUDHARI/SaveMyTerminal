@@ -14,6 +14,8 @@ pub struct RunOptions {
     pub paths: AppPaths,
     pub cpu_diagnostics: bool,
     pub memory_diagnostics: bool,
+    pub ambient_intensity: u8,
+    pub session_id: Option<Uuid>,
 }
 
 pub async fn run(command: Vec<String>, renderer: &mut dyn Renderer) -> Result<i32> {
@@ -25,6 +27,8 @@ pub async fn run(command: Vec<String>, renderer: &mut dyn Renderer) -> Result<i3
             paths,
             cpu_diagnostics: true,
             memory_diagnostics: true,
+            ambient_intensity: 60,
+            session_id: None,
         },
     )
     .await
@@ -40,7 +44,7 @@ pub async fn run_with_options(
         .map(|program| identify_agent(program))
         .unwrap_or("unknown")
         .to_owned();
-    let session_id = Uuid::new_v4();
+    let session_id = options.session_id.unwrap_or_else(Uuid::new_v4);
 
     let client = if std::env::var_os("SMT_TEST_FORCE_SERVICE_FAILURE").is_some() {
         None
@@ -66,17 +70,30 @@ pub async fn run_with_options(
             .await;
     }
 
-    let mut child = child::spawn_inherited(&command)?;
+    let mut child = child::spawn_inherited(&command, session_id)?;
     let pid = child.id().unwrap_or_default();
     let diagnostics_enabled = options.cpu_diagnostics || options.memory_diagnostics;
-    let status = if let Some(client) = &client
-        && diagnostics_enabled
-    {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+    let status = if let Some(client) = &client {
+        let mut presentation_interval =
+            tokio::time::interval(std::time::Duration::from_millis(100));
+        let mut metrics_interval = tokio::time::interval(std::time::Duration::from_millis(500));
         loop {
             tokio::select! {
                 status = child.wait() => break status?,
-                _ = interval.tick() => {
+                _ = presentation_interval.tick() => {
+                    if let Ok(sessions) = client.active_sessions().await {
+                        let attached = sessions
+                            .into_iter()
+                            .filter(|session| session.session_id == session_id)
+                            .collect::<Vec<_>>();
+                        let view = crate::renderer::SnapshotView::from_sessions(
+                            &attached,
+                            options.ambient_intensity,
+                        );
+                        renderer.snapshot(&view);
+                    }
+                }
+                _ = metrics_interval.tick(), if diagnostics_enabled => {
                     let metrics = metrics::sample_once(pid).await;
                     let _ = client.send(&Event::new(
                         session_id,

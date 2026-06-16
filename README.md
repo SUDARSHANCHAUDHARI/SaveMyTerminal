@@ -2,7 +2,8 @@
 
 SaveMyTerminal adds local, privacy-safe lifecycle and resource visibility to terminal-based
 AI agents. It works with any command through a universal wrapper and adds optional native
-hooks and terminal presentation where supported.
+hooks and terminal presentation where supported. In Ghostty, an attached agent can drive a
+state-reactive black-hole shader without exposing prompts, responses, or terminal output.
 
 ## Installation
 
@@ -35,7 +36,9 @@ smt run -- your-agent --its-arguments
 ```
 
 The child retains its input, output, error streams, arguments, signals, and exit result.
-SaveMyTerminal records only approved lifecycle and resource metadata.
+SaveMyTerminal records only approved lifecycle and resource metadata. Use the wrapper when you
+want terminal animation: native hooks alone update snapshots and the dashboard, but they cannot
+write presentation signals into an already-running terminal process.
 
 ## Native Agent Hooks
 
@@ -65,6 +68,47 @@ smt setup --integration iterm2 --apply
 Setup installs generated local assets and the smallest managed configuration block supported
 by the terminal. Unsupported environments fall back to the portable text renderer.
 
+### Ghostty Black-Hole Mode
+
+Install the native Codex hooks and Ghostty shader, then restart Ghostty:
+
+```bash
+smt setup --integration codex --apply
+smt setup --integration ghostty --apply
+```
+
+On macOS, the managed block is written to Ghostty's documented `config.ghostty` file. Start the
+agent through the attached wrapper:
+
+```bash
+smt run -- codex
+```
+
+The shader reacts to normalized states: indigo while starting, purple while thinking, amber
+while a tool runs, and cyan while waiting. Animation speed changes with state. When context
+pressure is available, it changes the accretion-disk radius and the disk shifts toward red as
+the window approaches full; otherwise the shader uses a neutral fallback.
+Context pressure remains unavailable when an agent's hook payload does not expose safe usage
+metadata, unless you enable the optional transcript source described below.
+
+By default SaveMyTerminal never opens transcript files. If you want the disk to track context
+for an agent that records local usage counters (such as Claude Code), you can opt in:
+
+```bash
+smt config set presentation.context_from_transcript true
+```
+
+When enabled, only the numeric token counters and model identifier are read from the agent's
+local transcript — never prompt or response text. It stays off unless you set it, and you can
+disable it again at any time:
+
+```bash
+smt config set presentation.context_from_transcript false
+```
+
+Kitty receives the generated ambient image, while WezTerm and iTerm2 show snapshot-driven status.
+Those integrations are intentionally not described as visually identical to Ghostty.
+
 ## Snapshot
 
 Terminal integrations consume the same privacy-safe active-session view exposed by:
@@ -83,7 +127,8 @@ smt dashboard
 ```
 
 It shows active sessions, finalized local history, 30-day summaries, per-session deletion, and
-full-history purge. Browser launch uses a random single-use URL exchanged for an `HttpOnly`,
+full-history purge. Live and historical views include context pressure when available and label
+its quality. Browser launch uses a random single-use URL exchanged for an `HttpOnly`,
 same-origin cookie; the installation token is never embedded in dashboard assets.
 
 ## Configuration And Diagnostics
@@ -120,7 +165,8 @@ arguments, environment values, file contents, or working-directory paths. Normal
 uses only an authenticated loopback service and has no remote endpoint or telemetry.
 
 See [compatibility](docs/compatibility.md), the [V1 design](docs/superpowers/specs/2026-06-13-savemyterminal-design.md),
-and the [release checklist](docs/release-checklist.md).
+the [verification matrix](docs/verification-matrix.md), and the
+[release checklist](docs/release-checklist.md).
 
 ## Development
 

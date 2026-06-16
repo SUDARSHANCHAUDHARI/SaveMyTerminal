@@ -46,6 +46,7 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             let mut renderer = crate::renderer::HybridRenderer::stderr(
                 !args.no_status && settings.presentation.status_enabled,
                 settings.presentation.ambient_enabled && ambient_terminal,
+                settings.presentation.ambient_intensity,
             );
             crate::runner::run_with_options(
                 args.command,
@@ -54,6 +55,8 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                     paths,
                     cpu_diagnostics: settings.diagnostics.cpu,
                     memory_diagnostics: settings.diagnostics.memory,
+                    ambient_intensity: settings.presentation.ambient_intensity,
+                    session_id: None,
                 },
             )
             .await
@@ -269,6 +272,13 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                 println!("settings created: {}", settings_file.display());
             } else {
                 println!("preview: create settings at {}", settings_file.display());
+            }
+            if !selected_terminals.is_empty() || !selected_agents.is_empty() {
+                println!(
+                    "optional: let the black-hole disk track context fill by reading only local \
+                     token counts (off by default):"
+                );
+                println!("  smt config set presentation.context_from_transcript true");
             }
             Ok(0)
         }
@@ -486,12 +496,28 @@ async fn run_native_hook(agent: crate::adapter::NativeAgent) {
     {
         return;
     }
-    let Ok(Some(event)) = crate::adapter::map_hook(agent, &input) else {
+    let Ok(Some(mut event)) = crate::adapter::map_hook(agent, &input) else {
         return;
     };
     let Ok(paths) = crate::paths::AppPaths::discover() else {
         return;
     };
+    if event.context_pressure.is_none()
+        && crate::config::load(&paths.settings_file())
+            .unwrap_or_default()
+            .presentation
+            .context_from_transcript
+        && let Some(path) = crate::adapter::transcript_path_from_hook(&input)
+    {
+        event.context_pressure =
+            crate::adapter::context_from_transcript(std::path::Path::new(&path));
+    }
+    let event = crate::adapter::attach_to_wrapper(
+        event,
+        std::env::var(crate::adapter::ATTACHED_SESSION_ENV)
+            .ok()
+            .as_deref(),
+    );
     let Ok(client) = crate::client::ServiceClient::ensure(&paths).await else {
         return;
     };

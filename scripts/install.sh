@@ -56,4 +56,7 @@ binary=$(find "$extract_tmp" -type f -name smt -print -quit)
 test -n "$binary"
 mkdir -p "$install_dir"
 install -m 0755 "$binary" "$install_dir/smt"
+if [ "$(uname -s)" = Darwin ]; then
+    codesign --force --sign - "$install_dir/smt"
+fi
 printf 'Installed %s\n' "$install_dir/smt"

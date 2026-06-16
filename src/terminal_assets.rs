@@ -2,21 +2,67 @@ use crate::paths::AppPaths;
 use anyhow::{Context, Result};
 use std::{fs::OpenOptions, io::Write, path::Path};
 
-pub const GHOSTTY_SHADER: &str = r#"// SaveMyTerminal original ambient shader
+pub const GHOSTTY_SHADER: &str = r#"// SaveMyTerminal state-reactive black-hole shader
+const float STATE_STARTING = 0.0;
+const float STATE_THINKING = 1.0;
+const float STATE_TOOL_RUNNING = 2.0;
+const float STATE_WAITING = 3.0;
+
+float decodeState(vec3 signal) {
+    return floor(signal.r * 255.0 + 0.5) - 160.0;
+}
+
+float decodeIntensity(vec3 signal) {
+    return clamp(signal.g, 0.0, 1.0);
+}
+
+float decodeContext(vec3 signal) {
+    float encoded = floor(signal.b * 255.0 + 0.5);
+    return encoded >= 255.0 ? -1.0 : encoded / 254.0;
+}
+
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = fragCoord.xy / iResolution.xy;
-    vec4 terminal = texture(iChannel0, uv);
-    vec3 cursor = iCurrentCursorColor.rgb;
-    vec3 signatureColor = vec3(139.0, 92.0, 246.0) / 255.0;
-    float signature = 1.0 - step(0.035, distance(cursor, signatureColor));
-    vec2 delta = uv - vec2(0.86, 0.16);
+    vec3 signal = iCurrentCursorColor.rgb;
+    float state = decodeState(signal);
+    float signalEnabled = step(-0.5, state) * step(state, 6.5);
+    float intensity = decodeIntensity(signal);
+    float context = decodeContext(signal);
+    float pressure = context < 0.0 ? 0.35 : context;
+
+    vec2 center = vec2(0.84, 0.18);
+    vec2 delta = uv - center;
     delta.x *= iResolution.x / iResolution.y;
     float radius = length(delta);
-    float ring = exp(-80.0 * abs(radius - 0.09));
-    float haze = exp(-18.0 * radius) * (0.72 + 0.28 * sin(iTime * 1.8));
-    vec3 ambient = mix(vec3(0.12, 0.38, 0.76), cursor, 0.55);
-    float strength = signature * (0.07 * haze + 0.12 * ring);
-    fragColor = vec4(mix(terminal.rgb, ambient, strength), terminal.a);
+    float speed = mix(0.8, 2.4, step(STATE_THINKING - 0.5, state));
+    speed = mix(speed, 3.6, step(STATE_TOOL_RUNNING - 0.5, state));
+    speed = mix(speed, 0.6, step(STATE_WAITING - 0.5, state));
+    float angle = atan(delta.y, delta.x) + iTime * speed;
+
+    float lens = signalEnabled * intensity * smoothstep(0.22, 0.025, radius) * 0.018;
+    vec2 warped = uv + normalize(delta + vec2(0.0001)) * lens;
+    vec4 terminal = texture(iChannel0, warped);
+
+    float horizon = 1.0 - smoothstep(0.035, 0.052, radius);
+    float diskRadius = mix(0.06, 0.17, pressure);
+    float disk = exp(-95.0 * abs(radius - diskRadius));
+    disk *= 0.62 + 0.38 * sin(angle * 3.0 - iTime * speed);
+    float photonRing = exp(-180.0 * abs(radius - 0.055));
+    float haze = exp(-15.0 * radius) * (0.7 + 0.3 * sin(iTime * speed));
+
+    vec3 stateColor = vec3(0.39, 0.40, 0.95);
+    if (state >= STATE_THINKING - 0.5) stateColor = vec3(0.55, 0.36, 0.96);
+    if (state >= STATE_TOOL_RUNNING - 0.5) stateColor = vec3(0.96, 0.62, 0.08);
+    if (state >= STATE_WAITING - 0.5) stateColor = vec3(0.02, 0.71, 0.83);
+
+    // Context-pressure warning: shift toward red as the window nears full.
+    float warn = smoothstep(0.8, 1.0, context) * signalEnabled;
+    stateColor = mix(stateColor, vec3(0.95, 0.16, 0.18), warn);
+
+    float glow = signalEnabled * intensity * (0.18 * disk + 0.24 * photonRing + 0.07 * haze);
+    vec3 composed = mix(terminal.rgb, stateColor, clamp(glow, 0.0, 0.7));
+    composed *= 1.0 - signalEnabled * horizon * 0.96;
+    fragColor = vec4(composed, terminal.a);
 }
 "#;
 

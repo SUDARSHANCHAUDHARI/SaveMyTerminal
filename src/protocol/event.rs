@@ -93,6 +93,8 @@ pub struct Event {
     pub timestamp_ms: u64,
     pub adapter_id: String,
     pub agent_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_pressure: Option<Metric<f32>>,
     pub kind: EventKind,
 }
 
@@ -114,6 +116,7 @@ impl Event {
             timestamp_ms,
             adapter_id: adapter_id.into(),
             agent_id: agent_id.into(),
+            context_pressure: None,
             kind,
         }
     }
@@ -136,6 +139,11 @@ impl Event {
         {
             return Err(ProtocolError::NonFiniteCpuPercent);
         }
+        if self.context_pressure.as_ref().is_some_and(|metric| {
+            !metric.value.is_finite() || !(0.0..=100.0).contains(&metric.value)
+        }) {
+            return Err(ProtocolError::InvalidContextPressure);
+        }
         Ok(())
     }
 }
@@ -150,4 +158,6 @@ pub enum ProtocolError {
     IdentifierTooLong,
     #[error("cpu percent metric must be finite")]
     NonFiniteCpuPercent,
+    #[error("context pressure must be finite and between 0 and 100")]
+    InvalidContextPressure,
 }

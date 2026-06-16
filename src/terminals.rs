@@ -53,7 +53,7 @@ pub const COMPATIBILITY: &[Compatibility] = &[
 
 pub fn descriptors(home: &Path, paths: &AppPaths, os: OsId) -> Vec<TextDescriptor> {
     let ghostty_target = if os == OsId::Macos {
-        home.join("Library/Application Support/com.mitchellh.ghostty/config")
+        home.join("Library/Application Support/com.mitchellh.ghostty/config.ghostty")
     } else {
         home.join(".config/ghostty/config")
     };
@@ -63,7 +63,7 @@ pub fn descriptors(home: &Path, paths: &AppPaths, os: OsId) -> Vec<TextDescripto
         ghostty_target,
         "#",
         format!(
-            "custom-shader = {}\ncustom-shader-animation = true",
+            "custom-shader = {}\ncustom-shader-animation = always",
             shader_path(paths).display()
         ),
         None,

@@ -1,5 +1,5 @@
 use savemyterminal::{
-    protocol::{SessionSnapshot, SessionState},
+    protocol::{Metric, MetricQuality, MetricSource, SessionSnapshot, SessionState},
     renderer::SnapshotView,
 };
 use uuid::Uuid;
@@ -14,6 +14,7 @@ fn session(agent: &str, state: SessionState, updated_at_ms: u64) -> SessionSnaps
         updated_at_ms,
         cpu_percent: None,
         memory_bytes: None,
+        context_pressure: None,
     }
 }
 
@@ -73,6 +74,38 @@ fn newest_session_is_primary_and_multiple_sessions_are_counted() {
     assert_eq!(view.active_count, 2);
     assert_eq!(view.agent_id.as_deref(), Some("gemini"));
     assert_eq!(view.label, "smt gemini tool (+1)");
+}
+
+#[test]
+fn unrelated_native_session_does_not_hijack_newer_wrapper_view() {
+    let mut native = session("codex", SessionState::ToolRunning, 20);
+    native.adapter_id = "codex-hooks".to_owned();
+    native.context_pressure = Some(Metric::new(72.5, MetricQuality::Exact, MetricSource::Agent));
+    let mut wrapper = session("codex", SessionState::Starting, 30);
+    wrapper.adapter_id = "generic".to_owned();
+
+    let view = SnapshotView::from_sessions(&[native, wrapper], 60);
+
+    assert_eq!(view.agent_id.as_deref(), Some("codex"));
+    assert_eq!(view.state, Some(SessionState::Starting));
+    assert!(view.context_pressure.is_none());
+}
+
+#[test]
+fn snapshot_exposes_context_pressure_honestly_when_available() {
+    let mut active = session("claude", SessionState::Thinking, 10);
+    active.context_pressure = Some(Metric::new(
+        41.0,
+        MetricQuality::Estimated,
+        MetricSource::Heuristic,
+    ));
+
+    let view = SnapshotView::from_sessions(&[active], 60);
+
+    assert_eq!(
+        view.context_pressure.unwrap().quality,
+        MetricQuality::Estimated
+    );
 }
 
 #[test]

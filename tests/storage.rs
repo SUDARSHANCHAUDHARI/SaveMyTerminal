@@ -88,6 +88,7 @@ fn started_snapshot(session_id: Uuid, agent_id: &str, timestamp_ms: u64) -> Sess
         updated_at_ms: timestamp_ms,
         cpu_percent: None,
         memory_bytes: None,
+        context_pressure: None,
     }
 }
 
@@ -139,6 +140,49 @@ fn sqlite_records_and_lists_finalized_summaries_newest_first() {
     assert_eq!(history.sessions[0].session_id, newer_id);
     assert_eq!(history.sessions[1].agent_id, "agent'one");
     assert_eq!(history.sessions[1].duration_ms, 100);
+}
+
+#[test]
+fn sqlite_persists_context_peak_and_final_quality() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = SqliteStore::open(&temp.path().join("history.sqlite3")).unwrap();
+    let mut snapshot = started_snapshot(Uuid::new_v4(), "codex", 100);
+    store
+        .record(&snapshot, &EventKind::Started, AdapterKind::Native)
+        .unwrap();
+
+    snapshot.state = SessionState::Thinking;
+    snapshot.updated_at_ms = 150;
+    snapshot.context_pressure = Some(Metric::new(
+        42.0,
+        MetricQuality::Estimated,
+        MetricSource::Agent,
+    ));
+    store
+        .record(&snapshot, &EventKind::Thinking, AdapterKind::Native)
+        .unwrap();
+    snapshot.state = SessionState::Completed;
+    snapshot.updated_at_ms = 200;
+    snapshot.context_pressure = Some(Metric::new(
+        75.0,
+        MetricQuality::Estimated,
+        MetricSource::Agent,
+    ));
+    store
+        .record(
+            &snapshot,
+            &EventKind::Completed { exit_code: 0 },
+            AdapterKind::Native,
+        )
+        .unwrap();
+
+    let summary = &store.history(10, 0).unwrap().sessions[0];
+    assert_eq!(summary.context_peak.as_ref().unwrap().value, 75.0);
+    assert_eq!(summary.context_final.as_ref().unwrap().value, 75.0);
+    assert_eq!(
+        summary.context_final.as_ref().unwrap().quality,
+        MetricQuality::Estimated
+    );
 }
 
 #[test]
@@ -306,6 +350,7 @@ fn stats_aggregate_duration_states_and_resource_samples() {
     }
     snapshot.state = SessionState::Completed;
     snapshot.updated_at_ms = 200;
+    snapshot.context_pressure = Some(Metric::new(68.0, MetricQuality::Exact, MetricSource::Agent));
     store
         .record(
             &snapshot,
@@ -324,6 +369,7 @@ fn stats_aggregate_duration_states_and_resource_samples() {
     assert_eq!(stats.peak_cpu_percent, Some(20.0));
     assert_eq!(stats.average_memory_bytes, Some(200));
     assert_eq!(stats.peak_memory_bytes, Some(300));
+    assert_eq!(stats.context_peak.unwrap().value, 68.0);
 }
 
 #[test]

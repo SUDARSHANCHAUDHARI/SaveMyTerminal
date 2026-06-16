@@ -2,6 +2,22 @@
 
 All notable changes to SaveMyTerminal are documented here.
 
+## Unreleased
+
+### Added
+
+- Optional `presentation.context_from_transcript` setting (default off). When enabled, the disk
+  tracks context-window fill for agents that record local usage counters, reading only numeric
+  token counts and the model id — never prompt or response text.
+
+### Fixed
+
+- Replaced the static Ghostty corner glow with a state-reactive black-hole shader.
+- Linked native hook events to their attached wrapper session to prevent cross-session display.
+- Added privacy-safe optional context pressure to live snapshots, history, dashboard, and shader.
+- Corrected Ghostty's macOS managed configuration target to `config.ghostty`.
+- Ensured the wrapper retains ownership of exact child completion and terminal cleanup.
+
 ## 1.0.0 - 2026-06-13
 
 ### Added

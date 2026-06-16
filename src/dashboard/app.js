@@ -47,6 +47,7 @@ function renderLive() {
       <div class="metrics">
         <div class="metric"><span>CPU</span><strong>${metric(session.cpu_percent, (value) => `${value.toFixed(1)}%`)}</strong></div>
         <div class="metric"><span>Memory</span><strong>${metric(session.memory_bytes, formatBytes)}</strong></div>
+        <div class="metric"><span>Context</span><strong>${metric(session.context_pressure, (value) => `${value.toFixed(1)}%`)}</strong></div>
       </div>
     </article>`).join("");
 }
@@ -94,6 +95,7 @@ function renderHistory(page) {
       <td>${formatDuration(session.duration_ms)}</td>
       <td>${session.peak_cpu_percent === null ? "Unavailable" : `${session.peak_cpu_percent.toFixed(1)}%`}</td>
       <td>${formatBytes(session.peak_memory_bytes)}</td>
+      <td>${metric(session.context_peak, (value) => `${value.toFixed(1)}%`)}</td>
       <td><button class="row-delete" data-delete="${session.session_id}" aria-label="Delete ${escapeAttribute(session.agent_id)} session">Delete</button></td>
     </tr>`).join("");
   document.querySelectorAll("[data-delete]").forEach((button) => {

@@ -23,7 +23,12 @@ fn repository_has_no_active_github_actions_workflow() {
 
 #[test]
 fn event_round_trip_contains_only_approved_top_level_fields() {
-    let event = Event::new(Uuid::new_v4(), "generic", "unknown", EventKind::Started);
+    let mut event = Event::new(Uuid::new_v4(), "generic", "unknown", EventKind::Started);
+    event.context_pressure = Some(Metric::new(
+        50.0,
+        MetricQuality::Estimated,
+        MetricSource::Heuristic,
+    ));
     let value = serde_json::to_value(event).unwrap();
     let object = value.as_object().unwrap();
     let mut keys: Vec<_> = object.keys().map(String::as_str).collect();
@@ -33,6 +38,7 @@ fn event_round_trip_contains_only_approved_top_level_fields() {
         [
             "adapter_id",
             "agent_id",
+            "context_pressure",
             "event_id",
             "kind",
             "protocol_version",
@@ -40,6 +46,23 @@ fn event_round_trip_contains_only_approved_top_level_fields() {
             "timestamp_ms"
         ]
     );
+}
+
+#[test]
+fn rejects_invalid_context_pressure_metrics() {
+    for pressure in [f32::NAN, f32::INFINITY, -0.1, 100.1] {
+        let mut event = Event::new(Uuid::new_v4(), "generic", "unknown", EventKind::Thinking);
+        event.context_pressure = Some(Metric::new(
+            pressure,
+            MetricQuality::Exact,
+            MetricSource::Agent,
+        ));
+
+        assert_eq!(
+            event.validate().unwrap_err().to_string(),
+            "context pressure must be finite and between 0 and 100"
+        );
+    }
 }
 
 #[test]
@@ -179,6 +202,7 @@ fn rejects_unknown_session_snapshot_fields() {
         updated_at_ms: 1,
         cpu_percent: None,
         memory_bytes: None,
+        context_pressure: None,
     };
     let mut value = serde_json::to_value(snapshot).unwrap();
     value

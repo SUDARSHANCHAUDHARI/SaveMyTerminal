@@ -169,6 +169,11 @@ pub struct PresentationSettings {
     pub status_compact: bool,
     pub ambient_enabled: bool,
     pub ambient_intensity: u8,
+    /// Opt-in: derive context pressure from a supported agent's local
+    /// transcript usage counters. Off by default so normal operation never
+    /// opens transcript files; only numeric token counts are read when on.
+    #[serde(default)]
+    pub context_from_transcript: bool,
 }
 
 impl Default for PresentationSettings {
@@ -178,6 +183,7 @@ impl Default for PresentationSettings {
             status_compact: true,
             ambient_enabled: true,
             ambient_intensity: 60,
+            context_from_transcript: false,
         }
     }
 }
@@ -366,6 +372,10 @@ pub fn reset_key(settings: &mut Settings, key: Option<&str>) -> Result<(), Confi
         "presentation.ambient_intensity" => {
             candidate.presentation.ambient_intensity = defaults.presentation.ambient_intensity;
         }
+        "presentation.context_from_transcript" => {
+            candidate.presentation.context_from_transcript =
+                defaults.presentation.context_from_transcript;
+        }
         "diagnostics.cpu" => candidate.diagnostics.cpu = defaults.diagnostics.cpu,
         "diagnostics.memory" => candidate.diagnostics.memory = defaults.diagnostics.memory,
         "diagnostics.duration" => candidate.diagnostics.duration = defaults.diagnostics.duration,
@@ -409,6 +419,9 @@ fn set_key_inner(settings: &mut Settings, key: &str, value: &str) -> Result<(), 
         }
         "presentation.ambient_intensity" => {
             settings.presentation.ambient_intensity = parse_value(key, value)?;
+        }
+        "presentation.context_from_transcript" => {
+            settings.presentation.context_from_transcript = parse_value(key, value)?;
         }
         "diagnostics.cpu" => settings.diagnostics.cpu = parse_value(key, value)?,
         "diagnostics.memory" => settings.diagnostics.memory = parse_value(key, value)?,
