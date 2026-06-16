@@ -26,7 +26,7 @@ integrations where an agent or terminal exposes a stable local extension point.
 
 | Terminal | Integration | Automated coverage | Manual release check |
 | --- | --- | --- | --- |
-| Ghostty 1.3+ | State-reactive GLSL shader driven by attached OSC signals | Config, shader, state-signal, and live-relay tests | Ghostty 1.3.1 loads `config.ghostty` and the generated shader; pixel-level visual inspection pending |
+| Ghostty 1.3+ | State-reactive GLSL shader driven by attached OSC signals | Config, shader, state-signal, and live-relay tests | Ghostty 1.3.1 loads `config.ghostty`, the generated shader, and animates per state (author-confirmed on macOS); full per-color visual inspection pending |
 | Kitty | Static ambient background image plus attached title signaling | Fixture tests | Visual check pending before artifact upload |
 | WezTerm | Snapshot-driven Lua right status | Fixture tests | Visual check pending before artifact upload |
 | iTerm2 | Snapshot-driven Python status component | Fixture tests | Visual check pending before artifact upload |
