@@ -13,6 +13,8 @@ All notable changes to SaveMyTerminal are documented here.
 ### Fixed
 
 - Replaced the static Ghostty corner glow with a state-reactive black-hole shader.
+- Set `custom-shader-animation = always` so the shader animates on an idle prompt.
+- Raised the idle and waiting shader speeds so the black hole always visibly moves.
 - Linked native hook events to their attached wrapper session to prevent cross-session display.
 - Added privacy-safe optional context pressure to live snapshots, history, dashboard, and shader.
 - Corrected Ghostty's macOS managed configuration target to `config.ghostty`.

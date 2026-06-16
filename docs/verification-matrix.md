@@ -10,7 +10,7 @@ own. Manual items remain explicitly pending until they are observed on the named
 | 2 | Codex, Claude, and Gemini native lifecycle adapters | `adapter.rs`, `agents.rs` | `adapter_contract`, `hook_command`, `integration_manager` | Codex lifecycle observed on macOS; Claude and Gemini manual runs pending |
 | 3 | Unknown agents receive generic lifecycle and process metrics | `runner/mod.rs`, `runner/metrics.rs` | `run_command`, metric unit tests | macOS host smoke verified |
 | 4 | Native terminal integrations with portable fallback | `terminals.rs`, `terminal_assets.rs`, renderer modules | `terminal_assets`, `setup_commands`, `renderer_contract` | Ghostty 1.3.1 loads managed shader; pixel inspection and Kitty/WezTerm/iTerm2 checks pending |
-| 5 | State and context pressure render together | protocol context metric, exact-session hook linking, OSC signal, Ghostty shader | adapter, renderer, relay, privacy, and storage tests | State transport observed; context remains unavailable when agent hooks omit usage metadata |
+| 5 | State and context pressure render together | protocol context metric, exact-session hook linking, OSC signal, Ghostty shader | adapter, renderer, relay, privacy, and storage tests | State transport observed and Ghostty animation confirmed on macOS; context is unavailable when agent hooks omit usage metadata unless the opt-in `presentation.context_from_transcript` setting is enabled |
 | 6 | Diagnostics are independently configurable | `config.rs`, `runner/mod.rs` | `config`, `run_command` | macOS host verified |
 | 7 | Authenticated live dashboard and 30-day history | dashboard, service API, SQLite storage | `dashboard_api`, `dashboard_command`, `storage` | Local dashboard API verified |
 | 8 | Prohibited content is absent | closed protocol/storage schemas and bounded adapters | `privacy_contract`, storage schema tests | Automated contract verified |
@@ -27,8 +27,9 @@ own. Manual items remain explicitly pending until they are observed on the named
 - `smt doctor` validates the Codex and Ghostty managed targets, checksums, and backups.
 - The relay integration test proves that only the attached wrapper UUID receives hook-driven
   state updates, even while a competing session is newer.
-- Pixel-level animation inspection remains manual because this execution environment cannot
-  capture the macOS display.
+- Shader animation was confirmed by the author on macOS Ghostty (forced-state cursor-color
+  signal and a live `smt run` session). Automated pixel capture remains unavailable because this
+  execution environment cannot read the macOS display.
 
 ## Completion Rule
 
