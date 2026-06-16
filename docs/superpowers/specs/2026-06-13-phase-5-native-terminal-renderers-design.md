@@ -63,7 +63,7 @@ Setup installs an original SaveMyTerminal GLSL fragment shader and adds:
 
 ```text
 custom-shader = <asset path>/savemyterminal.glsl
-custom-shader-animation = true
+custom-shader-animation = always
 ```
 
 The shader reads Ghostty's cursor-color uniforms and renders a restrained corner glow/ring while an attached `smt run` session is active. Unknown cursor colors pass the terminal through unchanged. Native agent hooks without an attached TTY continue to use the status/dashboard surfaces.
