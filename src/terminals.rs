@@ -63,7 +63,7 @@ pub fn descriptors(home: &Path, paths: &AppPaths, os: OsId) -> Vec<TextDescripto
         ghostty_target,
         "#",
         format!(
-            "custom-shader = {}\ncustom-shader-animation = true",
+            "custom-shader = {}\ncustom-shader-animation = always",
             shader_path(paths).display()
         ),
         None,
