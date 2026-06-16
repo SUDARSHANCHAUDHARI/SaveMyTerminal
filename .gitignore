@@ -4,3 +4,16 @@
 /dist/
 /.smt-runtime/
 *.log
+
+# Secrets and local config (defensive — none currently tracked)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.jks
+*.keystore
+local.properties
+keystore.properties
+*.token
