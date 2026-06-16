@@ -44,7 +44,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec4 terminal = texture(iChannel0, warped);
 
     float horizon = 1.0 - smoothstep(0.035, 0.052, radius);
-    float diskRadius = mix(0.075, 0.12, pressure);
+    float diskRadius = mix(0.06, 0.17, pressure);
     float disk = exp(-95.0 * abs(radius - diskRadius));
     disk *= 0.62 + 0.38 * sin(angle * 3.0 - iTime * speed);
     float photonRing = exp(-180.0 * abs(radius - 0.055));
@@ -54,6 +54,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     if (state >= STATE_THINKING - 0.5) stateColor = vec3(0.55, 0.36, 0.96);
     if (state >= STATE_TOOL_RUNNING - 0.5) stateColor = vec3(0.96, 0.62, 0.08);
     if (state >= STATE_WAITING - 0.5) stateColor = vec3(0.02, 0.71, 0.83);
+
+    // Context-pressure warning: shift toward red as the window nears full.
+    float warn = smoothstep(0.8, 1.0, context) * signalEnabled;
+    stateColor = mix(stateColor, vec3(0.95, 0.16, 0.18), warn);
 
     float glow = signalEnabled * intensity * (0.18 * disk + 0.24 * photonRing + 0.07 * haze);
     vec3 composed = mix(terminal.rgb, stateColor, clamp(glow, 0.0, 0.7));

@@ -1,10 +1,57 @@
 use savemyterminal::{
     adapter::{
         AdapterError, MAX_HOOK_INPUT_BYTES, NativeAgent, attach_to_wrapper, categorize_tool,
-        map_hook,
+        context_from_transcript, map_hook, transcript_path_from_hook,
     },
     protocol::{EventKind, MetricQuality, MetricSource, ToolCategory},
 };
+
+#[test]
+fn derives_estimated_context_pressure_from_transcript_usage() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("session.jsonl");
+    // Only the numeric usage counters and model are read; prose is ignored.
+    std::fs::write(
+        &path,
+        concat!(
+            r#"{"type":"user","message":{"role":"user","content":"ignored prompt text"}}"#,
+            "\n",
+            r#"{"type":"assistant","message":{"model":"claude-opus-4-8","usage":{"input_tokens":2,"cache_read_input_tokens":99998,"cache_creation_input_tokens":0,"output_tokens":500}}}"#,
+            "\n",
+        ),
+    )
+    .unwrap();
+
+    let metric = context_from_transcript(&path).expect("usage present");
+    assert!(
+        (metric.value - 50.0).abs() < 0.01,
+        "value was {}",
+        metric.value
+    );
+    assert_eq!(metric.quality, MetricQuality::Estimated);
+    assert_eq!(metric.source, MetricSource::Heuristic);
+}
+
+#[test]
+fn transcript_context_is_absent_when_no_usage_is_recorded() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty.jsonl");
+    std::fs::write(&path, "{\"type\":\"user\",\"message\":{}}\n").unwrap();
+    assert!(context_from_transcript(&path).is_none());
+    assert!(context_from_transcript(&dir.path().join("missing.jsonl")).is_none());
+}
+
+#[test]
+fn extracts_transcript_path_only_from_payloads_that_advertise_one() {
+    let with_path =
+        br#"{"session_id":"abc","hook_event_name":"Stop","transcript_path":"/tmp/x.jsonl"}"#;
+    assert_eq!(
+        transcript_path_from_hook(with_path).as_deref(),
+        Some("/tmp/x.jsonl")
+    );
+    let without_path = br#"{"session_id":"abc","hook_event_name":"Stop"}"#;
+    assert!(transcript_path_from_hook(without_path).is_none());
+}
 
 #[test]
 fn maps_each_native_lifecycle_without_claiming_turn_end_is_completion() {

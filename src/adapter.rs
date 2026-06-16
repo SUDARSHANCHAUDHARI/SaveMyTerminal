@@ -46,6 +46,8 @@ struct HookEnvelope {
     context_percent: Option<f32>,
     #[serde(default)]
     context_window: Option<ContextWindow>,
+    #[serde(default)]
+    transcript_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -164,4 +166,110 @@ pub fn attach_to_wrapper(mut event: Event, wrapper_session_id: Option<&str>) -> 
         }
     }
     event
+}
+
+/// Only the tail of a transcript is read, since the latest usage counters live
+/// at the end. A large bound keeps the common case to a single short read.
+const MAX_TRANSCRIPT_TAIL_BYTES: u64 = 512 * 1024;
+const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
+
+#[derive(Debug, Deserialize)]
+struct TranscriptLine {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    #[serde(default)]
+    message: Option<TranscriptMessage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TranscriptMessage {
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    usage: Option<TranscriptUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TranscriptUsage {
+    #[serde(default)]
+    input_tokens: u64,
+    #[serde(default)]
+    cache_read_input_tokens: u64,
+    #[serde(default)]
+    cache_creation_input_tokens: u64,
+}
+
+/// Extract the transcript path a supported hook payload advertises, if any.
+pub fn transcript_path_from_hook(input: &[u8]) -> Option<String> {
+    let envelope: HookEnvelope = serde_json::from_slice(input).ok()?;
+    envelope
+        .transcript_path
+        .filter(|path| !path.is_empty() && path.len() <= 4096)
+}
+
+/// Derive context pressure from a transcript's latest token usage counters.
+///
+/// This reads only the numeric `usage` fields from the most recent assistant
+/// entry and the model identifier. It never reads, stores, or transmits prompt
+/// or response text. The caller gates this behind an explicit opt-in.
+pub fn context_from_transcript(path: &std::path::Path) -> Option<Metric<f32>> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let start = len.saturating_sub(MAX_TRANSCRIPT_TAIL_BYTES);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut tail = String::new();
+    file.take(MAX_TRANSCRIPT_TAIL_BYTES)
+        .read_to_string(&mut tail)
+        .ok()?;
+    // Drop a leading partial line when the read began mid-file.
+    let lines = if start > 0 {
+        tail.split_once('\n').map(|(_, rest)| rest).unwrap_or("")
+    } else {
+        tail.as_str()
+    };
+
+    let mut used = None;
+    let mut limit = DEFAULT_CONTEXT_WINDOW;
+    for line in lines.lines() {
+        let Ok(parsed) = serde_json::from_str::<TranscriptLine>(line) else {
+            continue;
+        };
+        if parsed.kind.as_deref() != Some("assistant") {
+            continue;
+        }
+        let Some(message) = parsed.message else {
+            continue;
+        };
+        if let Some(model) = message.model.as_deref() {
+            limit = context_window_limit(model);
+        }
+        if let Some(usage) = message.usage {
+            used = Some(
+                usage.input_tokens
+                    + usage.cache_read_input_tokens
+                    + usage.cache_creation_input_tokens,
+            );
+        }
+    }
+
+    let used = used?;
+    if limit == 0 {
+        return None;
+    }
+    let percent = ((used as f64 / limit as f64) * 100.0) as f32;
+    Some(Metric::new(
+        percent.clamp(0.0, 100.0),
+        MetricQuality::Estimated,
+        MetricSource::Heuristic,
+    ))
+}
+
+fn context_window_limit(model: &str) -> u64 {
+    if model.to_ascii_lowercase().contains("1m") {
+        1_000_000
+    } else {
+        DEFAULT_CONTEXT_WINDOW
+    }
 }

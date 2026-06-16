@@ -489,18 +489,28 @@ async fn run_native_hook(agent: crate::adapter::NativeAgent) {
     {
         return;
     }
-    let Ok(Some(event)) = crate::adapter::map_hook(agent, &input) else {
+    let Ok(Some(mut event)) = crate::adapter::map_hook(agent, &input) else {
         return;
     };
+    let Ok(paths) = crate::paths::AppPaths::discover() else {
+        return;
+    };
+    if event.context_pressure.is_none()
+        && crate::config::load(&paths.settings_file())
+            .unwrap_or_default()
+            .presentation
+            .context_from_transcript
+        && let Some(path) = crate::adapter::transcript_path_from_hook(&input)
+    {
+        event.context_pressure =
+            crate::adapter::context_from_transcript(std::path::Path::new(&path));
+    }
     let event = crate::adapter::attach_to_wrapper(
         event,
         std::env::var(crate::adapter::ATTACHED_SESSION_ENV)
             .ok()
             .as_deref(),
     );
-    let Ok(paths) = crate::paths::AppPaths::discover() else {
-        return;
-    };
     let Ok(client) = crate::client::ServiceClient::ensure(&paths).await else {
         return;
     };
