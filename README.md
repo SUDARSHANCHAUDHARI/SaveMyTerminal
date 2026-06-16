@@ -1,9 +1,31 @@
 # SaveMyTerminal
 
+![Rust](https://img.shields.io/badge/Rust-1.95+-CE412B?logo=rust&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue)
+![Privacy](https://img.shields.io/badge/telemetry-none-success)
+
 SaveMyTerminal adds local, privacy-safe lifecycle and resource visibility to terminal-based
 AI agents. It works with any command through a universal wrapper and adds optional native
 hooks and terminal presentation where supported. In Ghostty, an attached agent can drive a
 state-reactive black-hole shader without exposing prompts, responses, or terminal output.
+
+## Features
+
+- **Universal wrapper** — `smt run -- <any-command>` observes lifecycle and resource use while
+  the child keeps its input, output, error streams, arguments, signals, and exit code.
+- **Native agent hooks** — first-class lifecycle adapters for Codex, Claude Code, and Gemini CLI,
+  with a generic fallback for everything else.
+- **State-reactive Ghostty shader** — a black hole whose color and speed track the agent's state
+  (starting, thinking, tool-running, waiting); its accretion disk grows with context pressure.
+- **Multi-terminal presentation** — Ghostty shader, Kitty ambient image, WezTerm/iTerm2 status,
+  and a portable text fallback for everything else.
+- **Authenticated local dashboard** — active sessions, 30-day history, and per-session deletion
+  over a loopback-only service.
+- **Privacy-first by construction** — no prompts, responses, output, command lines, arguments,
+  environment values, file contents, or paths. No remote endpoint, no telemetry.
+- **Safe, reversible setup** — bounded previews, checksums, backups, atomic writes, validators,
+  and exact owned-entry removal.
 
 ## Installation
 
@@ -70,10 +92,10 @@ by the terminal. Unsupported environments fall back to the portable text rendere
 
 ### Ghostty Black-Hole Mode
 
-Install the native Codex hooks and Ghostty shader, then restart Ghostty:
+Install the native agent hooks and Ghostty shader, then restart Ghostty:
 
 ```bash
-smt setup --integration codex --apply
+smt setup --integration claude --apply
 smt setup --integration ghostty --apply
 ```
 
@@ -81,7 +103,7 @@ On macOS, the managed block is written to Ghostty's documented `config.ghostty` 
 agent through the attached wrapper:
 
 ```bash
-smt run -- codex
+smt run -- claude
 ```
 
 The shader reacts to normalized states: indigo while starting, purple while thinking, amber
@@ -168,6 +190,17 @@ See [compatibility](docs/compatibility.md), the [V1 design](docs/superpowers/spe
 the [verification matrix](docs/verification-matrix.md), and the
 [release checklist](docs/release-checklist.md).
 
+## Tech Stack
+
+- **Language:** Rust 2024 (edition), Rust 1.95+
+- **Async runtime:** Tokio
+- **Local service:** Axum over loopback, authenticated with a per-install token
+- **Storage:** SQLite (bundled `rusqlite`), private file mode on Unix
+- **CLI:** clap
+- **Serialization:** Serde / `serde_json`, TOML for settings
+- **Presentation:** Ghostty GLSL shader, Kitty PNG asset, WezTerm Lua, iTerm2 Python, terminal OSC
+- **Metrics:** `sysinfo` for process CPU and memory
+
 ## Development
 
 ```bash
@@ -181,3 +214,19 @@ scripts/verify-release.sh
 
 Verification and release packaging run locally. This repository intentionally has no active
 GitHub Actions workflows.
+
+## Acknowledgements
+
+The Ghostty presentation idea is inspired by
+[ghostty-blackhole](https://github.com/s0xDk/ghostty-blackhole) by **s0xDk** — making agent
+activity an ambient part of the terminal. SaveMyTerminal is an independent, privacy-first
+reimplementation with its own original shader, a universal wrapper and native agent hooks,
+multi-terminal renderers, and a local service, dashboard, and history.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Sudarshan Chaudhari.
+
+## Author
+
+Built by [Sudarshan Chaudhari](https://github.com/SUDARSHANCHAUDHARI).
