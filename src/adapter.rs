@@ -4,7 +4,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub const MAX_HOOK_INPUT_BYTES: usize = 64 * 1024;
-pub const ATTACHED_SESSION_ENV: &str = "SMT_ATTACHED_SESSION_ID";
+pub const ATTACHED_SESSION_ENV: &str = "SAVEMYTERMINAL_ATTACHED_SESSION_ID";
 const SESSION_NAMESPACE: Uuid = Uuid::from_u128(0x35de3ca4_54e8_4b76_8a64_eb320718cab4);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

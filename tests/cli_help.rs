@@ -5,7 +5,7 @@ use savemyterminal::cli::{Cli, Command as CliCommand};
 
 #[test]
 fn help_lists_available_commands() {
-    Command::cargo_bin("smt")
+    Command::cargo_bin("savemyterminal")
         .unwrap()
         .arg("--help")
         .assert()
@@ -22,7 +22,7 @@ fn help_lists_available_commands() {
 
 #[test]
 fn run_requires_a_command_after_separator() {
-    Command::cargo_bin("smt")
+    Command::cargo_bin("savemyterminal")
         .unwrap()
         .arg("run")
         .assert()
@@ -32,7 +32,7 @@ fn run_requires_a_command_after_separator() {
 
 #[test]
 fn run_preserves_hyphenated_child_arguments_after_separator() {
-    let cli = Cli::try_parse_from(["smt", "run", "--", "tool", "--flag", "value"]).unwrap();
+    let cli = Cli::try_parse_from(["savemyterminal", "run", "--", "tool", "--flag", "value"]).unwrap();
 
     match cli.command {
         CliCommand::Run(args) => {

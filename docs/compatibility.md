@@ -17,7 +17,7 @@ integrations where an agent or terminal exposes a stable local extension point.
 
 | Agent | Integration | Automated coverage | Manual release check |
 | --- | --- | --- | --- |
-| Any CLI agent | `smt run -- <command>` | Yes | Host smoke test |
+| Any CLI agent | `savemyterminal run -- <command>` | Yes | Host smoke test |
 | Codex | Native hooks | Yes | Setup preview and one lifecycle run |
 | Claude Code | Native hooks | Yes | Setup preview and one lifecycle run |
 | Gemini CLI | Native hooks | Yes | Setup preview and one lifecycle run |
@@ -35,7 +35,7 @@ Unsupported or unavailable native integrations fall back to the universal wrappe
 portable text status. GPU, compositor, shell, multiplexer, and terminal-version differences
 still require the manual checks recorded above.
 
-Ghostty animation requires launching the agent with `smt run -- <agent>`. Native hooks enrich
+Ghostty animation requires launching the agent with `savemyterminal run -- <agent>`. Native hooks enrich
 the attached wrapper session with thinking, tool, waiting, and optional context-pressure data.
 Without the wrapper, hooks still feed the local snapshot and dashboard but cannot control the
 terminal's cursor-color presentation channel.

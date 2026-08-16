@@ -184,7 +184,7 @@ fn check_manifest(paths: &AppPaths, checks: &mut Vec<CheckResult>) {
         let ownership_intact = if let Some(agent) = record.marker_id.strip_prefix("json-") {
             serde_json::from_slice::<serde_json::Value>(&bytes)
                 .ok()
-                .is_some_and(|value| json_contains_command(&value, &format!("smt hook {agent}")))
+                .is_some_and(|value| json_contains_command(&value, &format!("savemyterminal hook {agent}")))
         } else {
             let text = String::from_utf8_lossy(&bytes);
             let begin = format!(">>> SaveMyTerminal:{} >>>", record.marker_id);

@@ -11,7 +11,7 @@ fn read(path: impl AsRef<Path>) -> String {
 
 #[test]
 fn crate_is_the_v1_release_candidate() {
-    assert_eq!(env!("CARGO_PKG_VERSION"), "1.0.0");
+    assert_eq!(env!("CARGO_PKG_VERSION"), "1.0.1");
 }
 
 #[test]
@@ -175,7 +175,7 @@ fn readme_documents_the_completed_product() {
     }
     assert!(!readme.contains("planned for later phases"));
     for required in [
-        "smt run -- codex",
+        "savemyterminal run -- codex",
         "state-reactive black-hole",
         "Context pressure remains unavailable",
         "config.ghostty",

@@ -16,7 +16,7 @@ async fn concurrent_ensure_calls_reuse_one_reachable_endpoint() {
         runtime_dir: temp.path().join("runtime"),
         data_dir: temp.path().join("data"),
     };
-    let executable = assert_cmd::cargo::cargo_bin!("smt");
+    let executable = assert_cmd::cargo::cargo_bin!("savemyterminal");
 
     let (first, second) = tokio::join!(
         ServiceClient::ensure_with_executable(&paths, executable, Duration::from_millis(500)),
@@ -58,7 +58,7 @@ async fn service_command_applies_fixed_port_and_disabled_history_settings() {
     settings.history.enabled = false;
     save_atomic(&paths.settings_file(), &settings).unwrap();
 
-    let mut child = tokio::process::Command::new(assert_cmd::cargo::cargo_bin!("smt"))
+    let mut child = tokio::process::Command::new(assert_cmd::cargo::cargo_bin!("savemyterminal"))
         .arg("service")
         .arg("--config-dir")
         .arg(&paths.config_dir)

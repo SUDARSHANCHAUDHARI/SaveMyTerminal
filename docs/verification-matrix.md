@@ -24,11 +24,11 @@ own. Manual items remain explicitly pending until they are observed on the named
 - Ghostty 1.3.1 is installed on the Apple Silicon host.
 - The managed macOS target is `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`.
 - `ghostty +show-config` reports the generated SaveMyTerminal shader path.
-- `smt doctor` validates the Codex and Ghostty managed targets, checksums, and backups.
+- `savemyterminal doctor` validates the Codex and Ghostty managed targets, checksums, and backups.
 - The relay integration test proves that only the attached wrapper UUID receives hook-driven
   state updates, even while a competing session is newer.
 - Shader animation was confirmed by the author on macOS Ghostty (forced-state cursor-color
-  signal and a live `smt run` session). Automated pixel capture remains unavailable because this
+  signal and a live `savemyterminal run` session). Automated pixel capture remains unavailable because this
   execution environment cannot read the macOS display.
 
 ## Completion Rule

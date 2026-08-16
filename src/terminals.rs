@@ -86,10 +86,10 @@ pub fn descriptors(home: &Path, paths: &AppPaths, os: OsId) -> Vec<TextDescripto
         1,
         home.join(".wezterm.lua"),
         "--",
-        r#"local smt_wezterm = require 'wezterm'
-smt_wezterm.on('update-right-status', function(window, pane)
-  local ok, stdout = smt_wezterm.run_child_process({ 'smt', 'snapshot', '--format', 'text' })
-  window:set_right_status(ok and stdout:gsub('%s+$', '') or 'smt idle')
+        r#"local savemyterminal_wezterm = require 'wezterm'
+savemyterminal_wezterm.on('update-right-status', function(window, pane)
+  local ok, stdout = savemyterminal_wezterm.run_child_process({ 'savemyterminal', 'snapshot', '--format', 'text' })
+  window:set_right_status(ok and stdout:gsub('%s+$', '') or 'savemyterminal idle')
 end)"#,
         None,
     )
@@ -118,7 +118,7 @@ async def main(connection):
         short_description="SaveMyTerminal",
         detailed_description="Privacy-safe local AI agent state",
         knobs=[],
-        exemplar="smt codex thinking",
+        exemplar="savemyterminal codex thinking",
         update_cadence=1,
         identifier="com.sudarshantechlabs.savemyterminal.status")
 
@@ -126,13 +126,13 @@ async def main(connection):
     async def status(knobs):
         try:
             process = await asyncio.create_subprocess_exec(
-                "smt", "snapshot", "--format", "text",
+                "savemyterminal", "snapshot", "--format", "text",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL)
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=1.0)
-            return stdout.decode("utf-8").strip() or "smt idle"
+            return stdout.decode("utf-8").strip() or "savemyterminal idle"
         except Exception:
-            return "smt idle"
+            return "savemyterminal idle"
 
     await component.async_register(connection, status)
 

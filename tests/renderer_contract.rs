@@ -24,7 +24,7 @@ fn snapshot_command_reports_idle_without_creating_service_state() {
     let config = temp.path().join("config");
     let runtime = temp.path().join("runtime");
     let data = temp.path().join("data");
-    assert_cmd::Command::cargo_bin("smt")
+    assert_cmd::Command::cargo_bin("savemyterminal")
         .unwrap()
         .args([
             "snapshot",
@@ -39,7 +39,7 @@ fn snapshot_command_reports_idle_without_creating_service_state() {
         ])
         .assert()
         .success()
-        .stdout(predicates::str::contains("\"label\":\"smt idle\""));
+        .stdout(predicates::str::contains("\"label\":\"savemyterminal idle\""));
     assert!(!config.join("auth.token").exists());
     assert!(!runtime.join("service.json").exists());
 }
@@ -57,7 +57,7 @@ fn renderer_accepts_every_normalized_state() {
     ] {
         let view = SnapshotView::from_sessions(&[session("codex", state, 1)], 60);
         assert_eq!(view.state, Some(state));
-        assert!(view.label.starts_with("smt codex "));
+        assert!(view.label.starts_with("savemyterminal codex "));
         assert!(view.color.starts_with('#'));
     }
 }
@@ -73,7 +73,7 @@ fn newest_session_is_primary_and_multiple_sessions_are_counted() {
     );
     assert_eq!(view.active_count, 2);
     assert_eq!(view.agent_id.as_deref(), Some("gemini"));
-    assert_eq!(view.label, "smt gemini tool (+1)");
+    assert_eq!(view.label, "savemyterminal gemini tool (+1)");
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn snapshot_exposes_context_pressure_honestly_when_available() {
 #[test]
 fn idle_and_json_views_contain_only_renderer_metadata() {
     let view = SnapshotView::from_sessions(&[], 200);
-    assert_eq!(view.label, "smt idle");
+    assert_eq!(view.label, "savemyterminal idle");
     assert_eq!(view.intensity, 100);
     let encoded = serde_json::to_string(&view).unwrap();
     for prohibited in [

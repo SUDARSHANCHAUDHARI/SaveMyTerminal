@@ -50,7 +50,7 @@ fn descriptor(home: &Path, codex_home: Option<&Path>, agent: NativeAgent) -> Jso
             ],
         ),
     };
-    let command = format!("smt hook {}", agent.id());
+    let command = format!("savemyterminal hook {}", agent.id());
     let managed_name = matches!(agent, NativeAgent::Gemini).then_some("savemyterminal");
     let install_events = events.clone();
     let install_command = command.clone();

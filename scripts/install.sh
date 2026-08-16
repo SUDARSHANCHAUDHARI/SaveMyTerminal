@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-version=${SMT_VERSION:-1.0.0}
-if [ -n "${SMT_TARGET:-}" ]; then
-    target=$SMT_TARGET
+version=${SAVEMYTERMINAL_VERSION:-1.0.1}
+if [ -n "${SAVEMYTERMINAL_TARGET:-}" ]; then
+    target=$SAVEMYTERMINAL_TARGET
 else
     os=$(uname -s)
     arch=$(uname -m)
@@ -12,10 +12,10 @@ else
         Darwin:x86_64) target=x86_64-apple-darwin ;;
         Linux:x86_64) target=x86_64-unknown-linux-gnu ;;
         Linux:arm64|Linux:aarch64) target=aarch64-unknown-linux-gnu ;;
-        *) echo "Unsupported platform; set SMT_TARGET explicitly" >&2; exit 1 ;;
+        *) echo "Unsupported platform; set SAVEMYTERMINAL_TARGET explicitly" >&2; exit 1 ;;
     esac
 fi
-install_dir=${SMT_INSTALL_DIR:-"$HOME/.local/bin"}
+install_dir=${SAVEMYTERMINAL_INSTALL_DIR:-"$HOME/.local/bin"}
 download_tmp=
 extract_tmp=
 
@@ -52,11 +52,11 @@ fi
 
 extract_tmp=$(mktemp -d)
 tar -xzf "$archive" -C "$extract_tmp"
-binary=$(find "$extract_tmp" -type f -name smt -print -quit)
+binary=$(find "$extract_tmp" -type f -name savemyterminal -print -quit)
 test -n "$binary"
 mkdir -p "$install_dir"
-install -m 0755 "$binary" "$install_dir/smt"
+install -m 0755 "$binary" "$install_dir/savemyterminal"
 if [ "$(uname -s)" = Darwin ]; then
-    codesign --force --sign - "$install_dir/smt"
+    codesign --force --sign - "$install_dir/savemyterminal"
 fi
-printf 'Installed %s\n' "$install_dir/smt"
+printf 'Installed %s\n' "$install_dir/savemyterminal"

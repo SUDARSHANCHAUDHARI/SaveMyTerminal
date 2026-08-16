@@ -13,16 +13,16 @@ archive="$root/dist/$package.tar.gz"
 
 if [ "$target" = "$host" ]; then
     cargo build --locked --release
-    binary="$root/target/release/smt"
+    binary="$root/target/release/savemyterminal"
 else
     cargo build --locked --release --target "$target"
-    binary="$root/target/$target/release/smt"
+    binary="$root/target/$target/release/savemyterminal"
 fi
 
 test -x "$binary"
 rm -rf "$stage"
 mkdir -p "$stage/docs"
-cp "$binary" "$stage/smt"
+cp "$binary" "$stage/savemyterminal"
 cp README.md LICENSE CHANGELOG.md "$stage/"
 cp docs/compatibility.md "$stage/docs/compatibility.md"
 
