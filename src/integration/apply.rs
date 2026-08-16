@@ -258,7 +258,7 @@ fn write_atomic(path: &Path, content: &[u8]) -> Result<(), ApplyError> {
         path: parent.to_path_buf(),
         source,
     })?;
-    let temp = path.with_extension(format!("smt-tmp-{}", std::process::id()));
+    let temp = path.with_extension(format!("savemyterminal-tmp-{}", std::process::id()));
     let result = (|| {
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);

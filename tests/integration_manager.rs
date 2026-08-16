@@ -41,7 +41,7 @@ fn agent_json_plans_preserve_unrelated_settings_and_remove_only_owned_hooks() {
     assert_eq!(installed["theme"], "dark");
     let encoded = installed.to_string();
     assert!(encoded.contains("user-hook"));
-    assert!(encoded.contains("smt hook claude"));
+    assert!(encoded.contains("savemyterminal hook claude"));
 
     let repeated = plan_json_install(&descriptor).unwrap();
     assert_eq!(repeated.action, PlanAction::NoChange);
@@ -51,7 +51,7 @@ fn agent_json_plans_preserve_unrelated_settings_and_remove_only_owned_hooks() {
     let removed = std::fs::read_to_string(&descriptor.target).unwrap();
     assert!(removed.contains("user-hook"));
     assert!(removed.contains("\"theme\": \"dark\""));
-    assert!(!removed.contains("smt hook claude"));
+    assert!(!removed.contains("savemyterminal hook claude"));
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn codex_install_migrates_owned_wildcard_groups_without_touching_user_hooks() {
     std::fs::create_dir_all(descriptor.target.parent().unwrap()).unwrap();
     std::fs::write(
         &descriptor.target,
-        r#"{"hooks":{"Stop":[{"matcher":"Bash","hooks":[{"type":"command","command":"user-hook"}]},{"matcher":"*","hooks":[{"type":"command","command":"smt hook codex","timeout":5}]}]}}"#,
+        r#"{"hooks":{"Stop":[{"matcher":"Bash","hooks":[{"type":"command","command":"user-hook"}]},{"matcher":"*","hooks":[{"type":"command","command":"savemyterminal hook codex","timeout":5}]}]}}"#,
     )
     .unwrap();
 
@@ -139,7 +139,7 @@ fn codex_install_migrates_owned_wildcard_groups_without_touching_user_hooks() {
     assert_eq!(stop[0]["hooks"][0]["command"], "user-hook");
     let owned = stop
         .iter()
-        .find(|group| group["hooks"][0]["command"] == "smt hook codex")
+        .find(|group| group["hooks"][0]["command"] == "savemyterminal hook codex")
         .unwrap();
     assert!(owned.get("matcher").is_none());
 }

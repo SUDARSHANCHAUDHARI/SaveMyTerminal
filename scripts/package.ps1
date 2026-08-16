@@ -13,16 +13,16 @@ $Archive = Join-Path $Root "dist/$Package.zip"
 
 if ($Target -eq $Host) {
     cargo build --locked --release
-    $Binary = Join-Path $Root "target/release/smt.exe"
+    $Binary = Join-Path $Root "target/release/savemyterminal.exe"
 } else {
     cargo build --locked --release --target $Target
-    $Binary = Join-Path $Root "target/$Target/release/smt.exe"
+    $Binary = Join-Path $Root "target/$Target/release/savemyterminal.exe"
 }
 
 if (-not (Test-Path $Binary)) { throw "Release binary not found: $Binary" }
 Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item (Join-Path $Stage "docs") -ItemType Directory -Force | Out-Null
-Copy-Item $Binary (Join-Path $Stage "smt.exe")
+Copy-Item $Binary (Join-Path $Stage "savemyterminal.exe")
 Copy-Item README.md, LICENSE, CHANGELOG.md $Stage
 Copy-Item docs/compatibility.md (Join-Path $Stage "docs/compatibility.md")
 

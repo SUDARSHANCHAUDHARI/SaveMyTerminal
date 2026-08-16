@@ -46,7 +46,7 @@ pub async fn run_with_options(
         .to_owned();
     let session_id = options.session_id.unwrap_or_else(Uuid::new_v4);
 
-    let client = if std::env::var_os("SMT_TEST_FORCE_SERVICE_FAILURE").is_some() {
+    let client = if std::env::var_os("SAVEMYTERMINAL_TEST_FORCE_SERVICE_FAILURE").is_some() {
         None
     } else {
         match ServiceClient::ensure(&options.paths).await {

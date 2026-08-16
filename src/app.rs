@@ -38,7 +38,7 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
             let settings = match crate::config::load(&paths.settings_file()) {
                 Ok(settings) => settings,
                 Err(error) => {
-                    eprintln!("smt warning: settings unavailable: {error}");
+                    eprintln!("savemyterminal warning: settings unavailable: {error}");
                     crate::config::Settings::default()
                 }
             };
@@ -278,7 +278,7 @@ async fn run_with_browser(browser: &dyn BrowserOpener) -> Result<i32> {
                     "optional: let the black-hole disk track context fill by reading only local \
                      token counts (off by default):"
                 );
-                println!("  smt config set presentation.context_from_transcript true");
+                println!("  savemyterminal config set presentation.context_from_transcript true");
             }
             Ok(0)
         }

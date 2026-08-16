@@ -12,7 +12,7 @@ state-reactive black-hole shader without exposing prompts, responses, or termina
 
 ## Features
 
-- **Universal wrapper** — `smt run -- <any-command>` observes lifecycle and resource use while
+- **Universal wrapper** — `savemyterminal run -- <any-command>` observes lifecycle and resource use while
   the child keeps its input, output, error streams, arguments, signals, and exit code.
 - **Native agent hooks** — first-class lifecycle adapters for Codex, Claude Code, and Gemini CLI,
   with a generic fallback for everything else.
@@ -35,7 +35,7 @@ Build and install from source with Rust 1.95 or newer:
 cargo install --path . --locked
 ```
 
-Release archives include `smt`, documentation, and an adjacent SHA-256 checksum. Install a
+Release archives include `savemyterminal`, documentation, and an adjacent SHA-256 checksum. Install a
 verified local Unix archive with:
 
 ```bash
@@ -43,7 +43,7 @@ scripts/install.sh dist/savemyterminal-1.0.0-<target>.tar.gz
 ```
 
 On Windows, run `scripts/install.ps1 <archive.zip>`. Installers only place the executable in
-`${SMT_INSTALL_DIR:-$HOME/.local/bin}` (or its PowerShell equivalent); they do not edit shell,
+`${SAVEMYTERMINAL_INSTALL_DIR:-$HOME/.local/bin}` (or its PowerShell equivalent); they do not edit shell,
 agent, or terminal configuration.
 
 ## Run An Agent
@@ -51,10 +51,10 @@ agent, or terminal configuration.
 Wrap any terminal agent or command:
 
 ```bash
-smt run -- codex
-smt run -- claude
-smt run -- gemini
-smt run -- your-agent --its-arguments
+savemyterminal run -- codex
+savemyterminal run -- claude
+savemyterminal run -- gemini
+savemyterminal run -- your-agent --its-arguments
 ```
 
 The child retains its input, output, error streams, arguments, signals, and exit result.
@@ -67,24 +67,24 @@ write presentation signals into an already-running terminal process.
 Preview a native integration, then apply it explicitly:
 
 ```bash
-smt setup --integration codex
-smt setup --integration codex --apply
-smt setup --integration claude --apply
-smt setup --integration gemini --apply
+savemyterminal setup --integration codex
+savemyterminal setup --integration codex --apply
+savemyterminal setup --integration claude --apply
+savemyterminal setup --integration gemini --apply
 ```
 
 Managed changes use bounded previews, checksums, backups, atomic writes, validators, and exact
-owned-entry removal. The universal `smt run` adapter remains available for every other agent.
+owned-entry removal. The universal `savemyterminal run` adapter remains available for every other agent.
 
 ## Terminal Integrations
 
 SaveMyTerminal provides optional renderers for Ghostty, Kitty, WezTerm, and iTerm2:
 
 ```bash
-smt setup --integration ghostty --apply
-smt setup --integration kitty --apply
-smt setup --integration wezterm --apply
-smt setup --integration iterm2 --apply
+savemyterminal setup --integration ghostty --apply
+savemyterminal setup --integration kitty --apply
+savemyterminal setup --integration wezterm --apply
+savemyterminal setup --integration iterm2 --apply
 ```
 
 Setup installs generated local assets and the smallest managed configuration block supported
@@ -95,15 +95,15 @@ by the terminal. Unsupported environments fall back to the portable text rendere
 Install the native agent hooks and Ghostty shader, then restart Ghostty:
 
 ```bash
-smt setup --integration claude --apply
-smt setup --integration ghostty --apply
+savemyterminal setup --integration claude --apply
+savemyterminal setup --integration ghostty --apply
 ```
 
 On macOS, the managed block is written to Ghostty's documented `config.ghostty` file. Start the
 agent through the attached wrapper:
 
 ```bash
-smt run -- claude
+savemyterminal run -- claude
 ```
 
 The shader reacts to normalized states: indigo while starting, purple while thinking, amber
@@ -117,7 +117,7 @@ By default SaveMyTerminal never opens transcript files. If you want the disk to 
 for an agent that records local usage counters (such as Claude Code), you can opt in:
 
 ```bash
-smt config set presentation.context_from_transcript true
+savemyterminal config set presentation.context_from_transcript true
 ```
 
 When enabled, only the numeric token counters and model identifier are read from the agent's
@@ -125,7 +125,7 @@ local transcript — never prompt or response text. It stays off unless you set 
 disable it again at any time:
 
 ```bash
-smt config set presentation.context_from_transcript false
+savemyterminal config set presentation.context_from_transcript false
 ```
 
 Kitty receives the generated ambient image, while WezTerm and iTerm2 show snapshot-driven status.
@@ -136,8 +136,8 @@ Those integrations are intentionally not described as visually identical to Ghos
 Terminal integrations consume the same privacy-safe active-session view exposed by:
 
 ```bash
-smt snapshot
-smt snapshot --format json
+savemyterminal snapshot
+savemyterminal snapshot --format json
 ```
 
 ## Dashboard
@@ -145,7 +145,7 @@ smt snapshot --format json
 Open the authenticated loopback dashboard:
 
 ```bash
-smt dashboard
+savemyterminal dashboard
 ```
 
 It shows active sessions, finalized local history, 30-day summaries, per-session deletion, and
@@ -156,12 +156,12 @@ same-origin cookie; the installation token is never embedded in dashboard assets
 ## Configuration And Diagnostics
 
 ```bash
-smt config show
-smt config path
-smt config set history.retention_days 14
-smt config set history.enabled false
-smt doctor
-smt status
+savemyterminal config show
+savemyterminal config path
+savemyterminal config set history.retention_days 14
+savemyterminal config set history.enabled false
+savemyterminal doctor
+savemyterminal status
 ```
 
 Settings are typed and reject unknown keys. Persistence defaults to 30 days. On Unix, the app
@@ -172,10 +172,10 @@ data directory is private and the SQLite database is mode `0600`.
 Removal previews by default and changes only SaveMyTerminal-owned entries:
 
 ```bash
-smt uninstall
-smt uninstall --apply
-smt uninstall --remove-config --apply
-smt uninstall --purge-data --apply
+savemyterminal uninstall
+savemyterminal uninstall --apply
+savemyterminal uninstall --remove-config --apply
+savemyterminal uninstall --purge-data --apply
 ```
 
 Configuration and history are preserved unless their explicit flags are supplied.

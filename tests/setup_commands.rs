@@ -3,7 +3,7 @@ use predicates::prelude::*;
 use savemyterminal::{config, paths::AppPaths};
 
 fn command(temp: &tempfile::TempDir) -> Command {
-    let mut command = Command::cargo_bin("smt").unwrap();
+    let mut command = Command::cargo_bin("savemyterminal").unwrap();
     command.args([
         "config",
         "--config-dir",
@@ -17,7 +17,7 @@ fn command(temp: &tempfile::TempDir) -> Command {
 }
 
 fn phase_command(temp: &tempfile::TempDir, name: &str) -> Command {
-    let mut command = Command::cargo_bin("smt").unwrap();
+    let mut command = Command::cargo_bin("savemyterminal").unwrap();
     command.arg(name).args([
         "--config-dir",
         temp.path().join("config").to_str().unwrap(),
@@ -196,7 +196,7 @@ fn setup_and_uninstall_manage_an_explicit_native_agent_hook() {
         .success()
         .stdout(predicate::str::contains("integration applied: codex"));
     let installed = std::fs::read_to_string(&target).unwrap();
-    assert!(installed.contains("smt hook codex"));
+    assert!(installed.contains("savemyterminal hook codex"));
     assert_eq!(
         savemyterminal::manifest::load_manifest(&paths(&temp).manifest_file())
             .unwrap()
@@ -219,7 +219,7 @@ fn setup_and_uninstall_manage_an_explicit_native_agent_hook() {
     assert!(
         !std::fs::read_to_string(target)
             .unwrap()
-            .contains("smt hook codex")
+            .contains("savemyterminal hook codex")
     );
     assert!(
         savemyterminal::manifest::load_manifest(&paths(&temp).manifest_file())

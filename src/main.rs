@@ -3,7 +3,7 @@ async fn main() {
     let code = match savemyterminal::app::run().await {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("smt: {error:#}");
+            eprintln!("savemyterminal: {error:#}");
             1
         }
     };

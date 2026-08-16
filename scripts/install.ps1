@@ -1,14 +1,14 @@
 $ErrorActionPreference = "Stop"
 
-$Version = if ($env:SMT_VERSION) { $env:SMT_VERSION } else { "1.0.0" }
-$Target = if ($env:SMT_TARGET) {
-    $env:SMT_TARGET
+$Version = if ($env:SAVEMYTERMINAL_VERSION) { $env:SAVEMYTERMINAL_VERSION } else { "1.0.1" }
+$Target = if ($env:SAVEMYTERMINAL_TARGET) {
+    $env:SAVEMYTERMINAL_TARGET
 } elseif ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") {
     "x86_64-pc-windows-msvc"
 } else {
-    throw "Unsupported platform; set SMT_TARGET explicitly"
+    throw "Unsupported platform; set SAVEMYTERMINAL_TARGET explicitly"
 }
-$InstallDir = if ($env:SMT_INSTALL_DIR) { $env:SMT_INSTALL_DIR } else { Join-Path $HOME ".local/bin" }
+$InstallDir = if ($env:SAVEMYTERMINAL_INSTALL_DIR) { $env:SAVEMYTERMINAL_INSTALL_DIR } else { Join-Path $HOME ".local/bin" }
 $Temporary = $null
 $Extract = $null
 
@@ -30,11 +30,11 @@ try {
 
     $Extract = New-Item -ItemType Directory -Path (Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid()))
     Expand-Archive $Archive $Extract
-    $Binary = Get-ChildItem $Extract -Filter smt.exe -Recurse | Select-Object -First 1
-    if (-not $Binary) { throw "smt.exe was not found in the archive" }
+    $Binary = Get-ChildItem $Extract -Filter savemyterminal.exe -Recurse | Select-Object -First 1
+    if (-not $Binary) { throw "savemyterminal.exe was not found in the archive" }
     New-Item $InstallDir -ItemType Directory -Force | Out-Null
-    Copy-Item $Binary.FullName (Join-Path $InstallDir "smt.exe") -Force
-    Write-Output "Installed $(Join-Path $InstallDir 'smt.exe')"
+    Copy-Item $Binary.FullName (Join-Path $InstallDir "savemyterminal.exe") -Force
+    Write-Output "Installed $(Join-Path $InstallDir 'savemyterminal.exe')"
 } finally {
     if ($Temporary) { Remove-Item $Temporary -Recurse -Force }
     if ($Extract) { Remove-Item $Extract -Recurse -Force }

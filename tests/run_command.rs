@@ -51,9 +51,9 @@ fn build_helper() -> (tempfile::TempDir, PathBuf) {
 #[test]
 fn preserves_arguments_and_success_exit_code() {
     let (_temp, helper) = build_helper();
-    Command::cargo_bin("smt")
+    Command::cargo_bin("savemyterminal")
         .unwrap()
-        .env("SMT_TEST_FORCE_SERVICE_FAILURE", "1")
+        .env("SAVEMYTERMINAL_TEST_FORCE_SERVICE_FAILURE", "1")
         .args(["run", "--no-status", "--"])
         .arg(helper)
         .args(["0", "hello world", "--flag"])
@@ -66,9 +66,9 @@ fn preserves_arguments_and_success_exit_code() {
 #[test]
 fn preserves_nonzero_exit_code() {
     let (_temp, helper) = build_helper();
-    Command::cargo_bin("smt")
+    Command::cargo_bin("savemyterminal")
         .unwrap()
-        .env("SMT_TEST_FORCE_SERVICE_FAILURE", "1")
+        .env("SAVEMYTERMINAL_TEST_FORCE_SERVICE_FAILURE", "1")
         .args(["run", "--no-status", "--"])
         .arg(helper)
         .arg("23")
@@ -79,9 +79,9 @@ fn preserves_nonzero_exit_code() {
 #[test]
 fn launches_child_when_service_is_unavailable() {
     let (_temp, helper) = build_helper();
-    Command::cargo_bin("smt")
+    Command::cargo_bin("savemyterminal")
         .unwrap()
-        .env("SMT_TEST_FORCE_SERVICE_FAILURE", "1")
+        .env("SAVEMYTERMINAL_TEST_FORCE_SERVICE_FAILURE", "1")
         .args(["run", "--no-status", "--"])
         .arg(helper)
         .args(["0", "still-ran"])
@@ -93,15 +93,15 @@ fn launches_child_when_service_is_unavailable() {
 #[test]
 fn unknown_executable_name_is_not_rendered() {
     let (_temp, helper) = build_helper();
-    Command::cargo_bin("smt")
+    Command::cargo_bin("savemyterminal")
         .unwrap()
-        .env("SMT_TEST_FORCE_SERVICE_FAILURE", "1")
+        .env("SAVEMYTERMINAL_TEST_FORCE_SERVICE_FAILURE", "1")
         .args(["run", "--"])
         .arg(helper)
         .arg("0")
         .assert()
         .success()
-        .stderr(predicate::str::contains("smt [unknown] starting"))
+        .stderr(predicate::str::contains("savemyterminal [unknown] starting"))
         .stderr(predicate::str::contains("exit-with").not());
 }
 
@@ -113,9 +113,9 @@ fn configured_status_disable_suppresses_renderer_without_no_status() {
     settings.presentation.status_enabled = false;
     save_atomic(&config_temp.path().join("settings.toml"), &settings).unwrap();
 
-    Command::cargo_bin("smt")
+    Command::cargo_bin("savemyterminal")
         .unwrap()
-        .env("SMT_TEST_FORCE_SERVICE_FAILURE", "1")
+        .env("SAVEMYTERMINAL_TEST_FORCE_SERVICE_FAILURE", "1")
         .args(["run", "--config-dir"])
         .arg(config_temp.path())
         .arg("--")
@@ -132,9 +132,9 @@ fn invalid_settings_warn_but_still_launch_the_child() {
     let config_temp = tempfile::tempdir().unwrap();
     std::fs::write(config_temp.path().join("settings.toml"), "invalid = true\n").unwrap();
 
-    Command::cargo_bin("smt")
+    Command::cargo_bin("savemyterminal")
         .unwrap()
-        .env("SMT_TEST_FORCE_SERVICE_FAILURE", "1")
+        .env("SAVEMYTERMINAL_TEST_FORCE_SERVICE_FAILURE", "1")
         .args(["run", "--config-dir"])
         .arg(config_temp.path())
         .arg("--")

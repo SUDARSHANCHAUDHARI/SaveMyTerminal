@@ -23,7 +23,7 @@ else
 fi
 
 case "$archive" in
-    *.tar.gz) tar -tzf "$archive" | grep '/smt$' >/dev/null ;;
+    *.tar.gz) tar -tzf "$archive" | grep '/savemyterminal$' >/dev/null ;;
     *) echo "Unexpected host archive: $archive" >&2; exit 1 ;;
 esac
 

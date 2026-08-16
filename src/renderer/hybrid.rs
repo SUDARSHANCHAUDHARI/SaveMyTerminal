@@ -84,7 +84,7 @@ fn encode_signal(state: SessionState, intensity: u8, context_pressure: Option<f3
 impl<W: Write + Send> Renderer for HybridRenderer<W> {
     fn started(&mut self, agent_id: &str) {
         if self.status_enabled {
-            let _ = writeln!(self.writer, "smt [{agent_id}] starting");
+            let _ = writeln!(self.writer, "savemyterminal [{agent_id}] starting");
         }
         let signal = encode_signal(SessionState::Starting, self.ambient_intensity, None);
         self.osc(&format!(
@@ -99,7 +99,7 @@ impl<W: Write + Send> Renderer for HybridRenderer<W> {
 
     fn finished(&mut self, agent_id: &str, exit_code: i32) {
         if self.status_enabled {
-            let _ = writeln!(self.writer, "smt [{agent_id}] exited {exit_code}");
+            let _ = writeln!(self.writer, "savemyterminal [{agent_id}] exited {exit_code}");
         }
         self.osc("\u{1b}]2;SaveMyTerminal: idle\u{7}\u{1b}]112\u{7}");
         self.last_signal = None;
@@ -107,7 +107,7 @@ impl<W: Write + Send> Renderer for HybridRenderer<W> {
 
     fn warning(&mut self, message: &str) {
         if self.status_enabled {
-            let _ = writeln!(self.writer, "smt warning: {message}");
+            let _ = writeln!(self.writer, "savemyterminal warning: {message}");
         }
     }
 }
@@ -128,7 +128,7 @@ mod tests {
         assert!(output.contains("SaveMyTerminal: codex active"));
         assert!(output.contains(&encode_signal(SessionState::Starting, 60, None)));
         assert!(output.contains("\u{1b}]112\u{7}"));
-        assert!(!output.contains("smt [codex]"));
+        assert!(!output.contains("savemyterminal [codex]"));
     }
 
     #[test]
@@ -141,7 +141,7 @@ mod tests {
         }
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            "smt [claude] starting\nsmt [claude] exited 2\n"
+            "savemyterminal [claude] starting\nsavemyterminal [claude] exited 2\n"
         );
     }
 
@@ -156,7 +156,7 @@ mod tests {
             active_count: 1,
             agent_id: Some("codex".to_owned()),
             state: Some(SessionState::Thinking),
-            label: "smt codex thinking".to_owned(),
+            label: "savemyterminal codex thinking".to_owned(),
             color: "#8b5cf6".to_owned(),
             intensity: 60,
             context_pressure: Some(Metric::new(75.0, MetricQuality::Exact, MetricSource::Agent)),
@@ -170,7 +170,7 @@ mod tests {
         renderer.snapshot(&view);
         renderer.snapshot(&SnapshotView {
             state: Some(SessionState::Waiting),
-            label: "smt codex waiting".to_owned(),
+            label: "savemyterminal codex waiting".to_owned(),
             ..view
         });
         drop(renderer);
