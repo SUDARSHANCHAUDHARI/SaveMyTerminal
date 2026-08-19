@@ -1,14 +1,37 @@
 # SaveMyTerminal
 
+[![crates.io](https://img.shields.io/crates/v/savemyterminal?logo=rust)](https://crates.io/crates/savemyterminal)
+[![Downloads](https://img.shields.io/crates/d/savemyterminal?logo=rust)](https://crates.io/crates/savemyterminal)
 ![Rust](https://img.shields.io/badge/Rust-1.95+-CE412B?logo=rust&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue)
 ![Privacy](https://img.shields.io/badge/telemetry-none-success)
 
+> Local, privacy-safe lifecycle and resource visibility for terminal-based AI agents — with a state-reactive Ghostty black-hole shader.
+
 SaveMyTerminal adds local, privacy-safe lifecycle and resource visibility to terminal-based
 AI agents. It works with any command through a universal wrapper and adds optional native
 hooks and terminal presentation where supported. In Ghostty, an attached agent can drive a
 state-reactive black-hole shader without exposing prompts, responses, or terminal output.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Run An Agent](#run-an-agent)
+- [Native Agent Hooks](#native-agent-hooks)
+- [Terminal Integrations](#terminal-integrations)
+- [Snapshot](#snapshot)
+- [Dashboard](#dashboard)
+- [Configuration And Diagnostics](#configuration-and-diagnostics)
+- [Uninstall](#uninstall)
+- [Privacy](#privacy)
+- [Documentation](#documentation)
+- [Tech Stack](#tech-stack)
+- [Development](#development)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
+- [About](#about)
 
 ## Features
 
@@ -29,6 +52,14 @@ state-reactive black-hole shader without exposing prompts, responses, or termina
 
 ## Installation
 
+### From crates.io (recommended)
+
+```bash
+cargo install savemyterminal
+```
+
+### From source
+
 Build and install from source with Rust 1.95 or newer:
 
 ```bash
@@ -39,7 +70,7 @@ Release archives include `savemyterminal`, documentation, and an adjacent SHA-25
 verified local Unix archive with:
 
 ```bash
-scripts/install.sh dist/savemyterminal-1.0.0-<target>.tar.gz
+scripts/install.sh dist/savemyterminal-1.0.1-<target>.tar.gz
 ```
 
 On Windows, run `scripts/install.ps1 <archive.zip>`. Installers only place the executable in
@@ -230,6 +261,28 @@ multi-terminal renderers, and a local service, dashboard, and history.
 
 Released under the [MIT License](LICENSE). Copyright (c) 2026 Sudarshan Chaudhari.
 
-## Author
+---
 
-Built by [Sudarshan Chaudhari](https://github.com/SUDARSHANCHAUDHARI).
+## About
+
+I'm Sudarshan Chaudhari, a Senior Quality Engineer, Test Automation specialist, and AI systems builder based in Bangkok, Thailand.
+
+I have 13+ years of experience in software quality engineering, working across SaaS, fintech, gaming, web, mobile, cloud, and digital signage platforms. My background combines hands-on test automation with QA leadership, test strategy, CI/CD, release quality, production investigation, and cross-platform validation.
+
+Alongside my professional QA career, I run [SudarshanTechLabs](https://sudarshantechlabs.com/), my independent engineering and product lab where I design, build, test, and ship software across Android, web, AI, cybersecurity, developer tooling, and cross-platform applications.
+
+### What I work on
+
+- ⚙️ **Quality Engineering & Test Automation** — Playwright, Selenium, Cypress, Appium, API testing, automation frameworks, end-to-end testing, CI/CD, release gates, GitHub Actions, risk-based testing, and production validation
+- 🤖 **AI Systems & Automation** — AI agents, multi-agent orchestration, MCP servers, AI-assisted QA, prompt tooling, developer workflows, automation systems, and Claude Code plugins
+- 📱 **Mobile & Cross-Platform Applications** — Android applications built with Kotlin and Jetpack Compose, Google Play releases, automated build and publishing pipelines, and cross-platform development spanning iOS, web, Windows, and macOS
+- 🌐 **Web Applications & Platforms** — Full-stack applications using Next.js, TypeScript, Firebase, Cloudflare, REST APIs, and modern web infrastructure
+- 🛠️ **Developer Tooling & CLI Engineering** — Rust, Python, TypeScript, CLI utilities, multi-repository tooling, build automation, release tooling, and engineering productivity systems
+- 🛡️ **Cybersecurity & Observability** — Threat detection, log analysis, security auditing, vulnerability assessment, monitoring, and security-focused developer tools
+- 📺 **Digital Signage & Device Platforms** — Content validation, playback testing, device compatibility, production investigation, monitoring, and QA across diverse hardware and operating-system environments
+
+My work sits at the intersection of quality engineering, automation, AI, and software development. I approach products with a QA mindset from the beginning: understanding failure modes, designing for testability, automating repetitive work, and building release confidence into the engineering process.
+
+Through SudarshanTechLabs, I also build products and tools from idea to production, covering architecture, development, testing, CI/CD, release automation, monitoring, and ongoing maintenance.
+
+🌐 [sudarshantechlabs.com](https://sudarshantechlabs.com/) · 💼 [LinkedIn](https://linkedin.com/in/sudarshan-chaudhari) · 🐙 [GitHub](https://github.com/SUDARSHANCHAUDHARI) · ✉️ [sunny.sudarshan@gmail.com](mailto:sunny.sudarshan@gmail.com)
