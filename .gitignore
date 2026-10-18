@@ -17,3 +17,6 @@
 local.properties
 keystore.properties
 *.token
+
+# repoguard scan output
+repoguard-results/
